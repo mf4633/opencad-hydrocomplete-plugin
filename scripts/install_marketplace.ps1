@@ -50,5 +50,5 @@ $bytes = (Get-Item (Join-Path $installDir $LibName)).Length
 Write-Host ('Installed: {0}' -f $installDir)
 Write-Host ('  {0} ({1} bytes)' -f $LibName, $bytes)
 Write-Host ""
-Write-Host "Restart OCS. Plugin Manager -> marketplace -> HydroComplete lists v0.4.3."
+Write-Host "Restart OCS. Plugin Manager -> marketplace -> HydroComplete (pick latest release tag)."
 Write-Host "MARKETPLACE INSTALL OK"
