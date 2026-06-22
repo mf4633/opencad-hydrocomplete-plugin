@@ -7,6 +7,7 @@
 //! CAD bridge: `ocs_plugin_api` v2.
 
 mod analysis;
+mod analyze_full;
 mod commands;
 mod data;
 mod dispatch;
@@ -17,6 +18,7 @@ mod integration_tests;
 mod landxml_import;
 mod params_cmd;
 mod placement;
+mod report_export;
 mod sizing;
 mod state;
 mod style;

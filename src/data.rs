@@ -678,6 +678,7 @@ pub struct CatchmentInfo {
     pub runoff_c: f64,
     pub curve_number: f64,
     pub tc_minutes: f64,
+    pub outfall_structure_id: Option<String>,
 }
 
 pub fn network_summaries<'a>(
@@ -817,6 +818,12 @@ pub fn catchments_from_entities<'a>(entities: impl Iterator<Item = &'a EntityTyp
             let area_sqft = shoelace_area_sqft(&verts);
             let area_ac = sqft_to_acres(area_sqft);
             let tc = catchment_tc_minutes(flow_len, slope);
+            let inlet = if rec.values.len() >= 4 {
+                handle(&rec.values[3]).filter(|h| !h.is_null())
+            } else {
+                None
+            };
+            let outfall_id = inlet.map(|h| format!("H{}", h.value()));
             idx += 1;
             out.push(CatchmentInfo {
                 name: format!("C{idx}"),
@@ -824,6 +831,7 @@ pub fn catchments_from_entities<'a>(entities: impl Iterator<Item = &'a EntityTyp
                 runoff_c: c,
                 curve_number: 0.0,
                 tc_minutes: tc,
+                outfall_structure_id: outfall_id,
             });
         }
     }

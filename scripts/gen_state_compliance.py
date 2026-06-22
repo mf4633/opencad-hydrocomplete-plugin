@@ -13,7 +13,17 @@ pattern = re.compile(
 )
 blocks = pattern.findall(text)
 
+def rust_str(s: str) -> str:
+    s = s.replace("\\", "\\\\").replace('"', '\\"')
+    s = s.replace("\u2014", "-").replace("\u2013", "-")
+    return f'"{s}"'
+
+
 def field(body: str, name: str, default=None):
+    m = re.search(rf'{name} = ("(?:[^"\\]|\\.)*")', body)
+    if m:
+        inner = m.group(1)[1:-1]
+        return rust_str(inner)
     m = re.search(rf"{name} = ([^,\n]+)", body)
     if not m:
         return default
@@ -22,8 +32,6 @@ def field(body: str, name: str, default=None):
         return "true"
     if val == "false":
         return "false"
-    if val.endswith('"'):
-        return val
     if val.endswith("null"):
         return "None"
     if "." in val or "e" in val.lower():

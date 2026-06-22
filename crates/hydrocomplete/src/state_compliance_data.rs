@@ -47,7 +47,7 @@ static CONFIGS: &[(&str, StateComplianceConfig)] = &[
     ("AR", StateComplianceConfig {
         code: "AR",
         name: "Arkansas",
-        regulatory_body: "Arkansas Department of Energy and Environment — Division of Environmental Qua...",
+        regulatory_body: "Arkansas Department of Energy and Environment - Division of Environmental Qua...",
         design_storm_inches: 1.0,
         wq_volume_factor_inches: 1.0,
         peak_attenuation_percent: 100.0,
@@ -200,7 +200,7 @@ static CONFIGS: &[(&str, StateComplianceConfig)] = &[
     ("HI", StateComplianceConfig {
         code: "HI",
         name: "Hawaii",
-        regulatory_body: "Hawaii Department of Health,
+        regulatory_body: "Hawaii Department of Health, Clean Water Branch",
         design_storm_inches: 1.0,
         wq_volume_factor_inches: 1.0,
         peak_attenuation_percent: 100.0,
@@ -302,7 +302,7 @@ static CONFIGS: &[(&str, StateComplianceConfig)] = &[
     ("KY", StateComplianceConfig {
         code: "KY",
         name: "Kentucky",
-        regulatory_body: "Kentucky Energy and Environment Cabinet — Department for Environmental Protec...",
+        regulatory_body: "Kentucky Energy and Environment Cabinet - Department for Environmental Protec...",
         design_storm_inches: 0.8,
         wq_volume_factor_inches: 0.8,
         peak_attenuation_percent: 100.0,
@@ -387,7 +387,7 @@ static CONFIGS: &[(&str, StateComplianceConfig)] = &[
     ("MI", StateComplianceConfig {
         code: "MI",
         name: "Michigan",
-        regulatory_body: "Michigan Department of Environment,
+        regulatory_body: "Michigan Department of Environment, Great Lakes, and Energy",
         design_storm_inches: 1.0,
         wq_volume_factor_inches: 1.0,
         peak_attenuation_percent: 100.0,

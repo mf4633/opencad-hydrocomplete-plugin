@@ -45,7 +45,8 @@ Civil 3D reads native pipe networks; OpenCAD stores hydraulics on drawing entiti
 | `HC_CAPACITY` | 0.1 | Design Q vs Q_full, d/D, surcharge |
 | `HC_SIZE` | 0.1 | Standard pipe sizing |
 | `HC_HGL` / `HC_PROFILE` | 0.1 | HGL long-section profile |
-| `HC_REPORT` | 0.1 | Text report to command line (KaTeX HTML export planned) |
+| `HC_REPORT` | 0.2 | Formula-transparent HTML report (Manning + HGL + capacity) → `Documents/HydroComplete/` |
+| `HC_REPORT_PDF` | stub | Pro-only PDF export (free alternative: `HC_REPORT` HTML) |
 | `HC_MULTIRP` | 0.1 | Multi return-period table |
 | `HC_RATIONAL` | 0.1 | Rational Q from catchments |
 | `HC_ATLAS14` | 0.1 | Embedded IDF preset list (live PFDS fetch planned) |

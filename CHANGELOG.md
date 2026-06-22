@@ -8,39 +8,47 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- `HC_ANALYZE` — full-network analysis with surcharge/flood color styling on pipes and structures
-- `HC_VALIDATE` — design-criteria review (velocity, cover, slope, capacity, size progression, surface flooding) in addition to integrity checks
-- `HC_PIPES_WRITE` / `HC_CAPACITY_WRITE` — MText capacity labels on layer `HC-CAPACITY`
-- Interactive placement — click-to-place `HC_INLET`, `HC_JUNCTION`, `HC_OUTFALL`, and two-pick `HC_PIPE` (OpenCAD API v2)
-- Coordinate/handle placement for automation and `--serve` workflows
-- `HC_EDIT` — edit structure and pipe XDATA fields from the command line
-- `HC_LANDXML_IMPORT` — import LandXML 1.2 pipe networks (ribbon file dialog or path argument)
-- `HC_SCS` — SCS curve-number runoff from tagged catchments
-- `hydrocomplete` engine crate — box/arch Manning conduits and SCS runoff helpers atop `stormsewer`
-- Headless integration tests — XDATA round-trip, design-review cover flag, Tc apply map
-- GitHub Actions release workflow — per-platform `opencad.hydrocomplete-*` binaries + `plugin.toml`
+**Full analysis (mirrors `NetworkAnalysisPipeline`)**
+- `HC_ANALYZE` — hydrology, routing, capacity, HGL, sediment, WQV, compliance, design review
+- `HC_REVIEW` — design review + state regulatory compliance table
+- `hydrocomplete` engine: `network_analysis`, `catchment_flow_router`, `compliance`, `state_compliance` (53 jurisdictions), `sediment`, `water_quality`, `rational`, `trace`
+
+**HTML reports**
+- `HC_REPORT` — KaTeX HTML export to `Documents/HydroComplete/` (Manning + capacity + HGL)
+- `HC_REPORT_PDF` — Pro stub with free HTML fallback
+
+**Stormwater / BMP**
+- `HC_DETENTION`, `HC_BMP_SIZE`, `HC_WQ_TRAIN`, `HC_SEDIMENT_BASIN`, `HC_WQV`, `HC_SEDIMENT`, `HC_UNIT_HYDRO`
+- `HC_PREPOST`, `HC_OPTIMIZE`, `HC_BIORETENTION`, `HC_WETLAND`
+
+**Advanced hydraulics**
+- `HC_GVF`, `HC_CULVERT`, `HC_TC`, `HC_INLETS`, `HC_HYDROGRAPH`, `HC_ROUTE_HYDRO`
+- `HC_PUMP`, `HC_COST`, `HC_PROFILE_DXF`, `HC_NETWORK_DIAGRAM` (HTML/SVG), `HC_LANDXML` export
+
+**Network / placement**
+- Interactive placement (`HC_INLET`, `HC_JUNCTION`, `HC_OUTFALL`, `HC_PIPE`)
+- `HC_EDIT`, `HC_LANDXML_IMPORT`, `HC_PIPES_WRITE`, `HC_CAPACITY_WRITE`
+- 120 workspace tests (hydrocomplete 44, plugin 27, stormsewer 48)
 
 ### Changed
 
-- `HC_PIPES` / `HC_CAPACITY` — box and arch conduit shapes via `hydrocomplete::manning`
-- Ribbon groups aligned with HydroComplete.Civil3D 1.4 command families
+- `HC_PIPES` / `HC_CAPACITY` — circular, box, and arch Manning via `hydrocomplete::manning`
+- Ribbon groups aligned with HydroComplete.Civil3D 1.4
 
 ### Planned (stubs remain)
 
-- KaTeX HTML report export (`HC_REPORT` currently emits text; `stormsewer::report_html` engine ready)
-- NOAA Atlas 14 live PFDS fetch (`HC_ATLAS14` lists embedded presets)
-- Detention, BMP/WQV, GVF, culvert, SSURGO, Pro licensing (`HC_REPORT_PDF`, `HC_ACTIVATE`, …)
+- `HC_NETWORK_EDIT`, `HC_BACKGROUND`, `HC_SOIL` (SSURGO live fetch)
+- NOAA Atlas 14 live PFDS fetch
+- Pro licensing (`HC_ACTIVATE`)
 
 ## [0.1.0] - 2026-06-09
 
 ### Added
 
-- Initial Open CAD Studio external plugin (`opencad.hydrocomplete`) — cdylib + `plugin.toml` manifest
+- Initial Open CAD Studio external plugin (`opencad.hydrocomplete`)
 - XDATA schemas: `HYDROCOMPLETE_STRUCT`, `HYDROCOMPLETE_PIPE`, `HYDROCOMPLETE_CATCHMENT`
-- Core commands: `HC_ABOUT`, `HC_NETWORK`, `HC_PIPES`, `HC_CAPACITY`, `HC_SIZE`, `HC_HGL`, `HC_PROFILE`, `HC_REPORT`, `HC_MULTIRP`, `HC_RATIONAL`, `HC_ATLAS14`, `HC_PARAMS`
-- Coordinate placement: `HC_INLET`, `HC_JUNCTION`, `HC_OUTFALL`, `HC_PIPE`
-- `stormsewer` engine crate — Rational method, Manning (circular), HGL, IDF, LandXML parser, design review
-- Ribbon module with Network / Analysis / Stormwater / More groups
+- Core commands: `HC_ABOUT`, `HC_NETWORK`, `HC_PIPES`, `HC_CAPACITY`, `HC_SIZE`, `HC_HGL`, `HC_MULTIRP`, `HC_RATIONAL`, `HC_ATLAS14`
+- `stormsewer` engine crate — Rational, Manning, HGL, IDF, LandXML, design review
 - GPL-3.0-only license
 
 [0.2.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.1.0...v0.2.0

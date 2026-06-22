@@ -1,5 +1,6 @@
 //! Embedded state regulatory thresholds (mirrors `StateCompliance.cs`).
 
+#[path = "state_compliance_data.rs"]
 mod state_compliance_data;
 
 use std::collections::HashMap;
@@ -8,9 +9,9 @@ pub use state_compliance_data::EMBEDDED_STATE_COUNT;
 
 #[derive(Debug, Clone)]
 pub struct StateComplianceConfig {
-    pub code: String,
-    pub name: String,
-    pub regulatory_body: String,
+    pub code: &'static str,
+    pub name: &'static str,
+    pub regulatory_body: &'static str,
     pub design_storm_inches: f64,
     pub wq_volume_factor_inches: f64,
     pub peak_attenuation_percent: f64,
@@ -40,7 +41,6 @@ fn configs() -> &'static HashMap<String, StateComplianceConfig> {
     })
 }
 
-/// Returns the config for `state_code` or DEFAULT.
 pub fn get(state_code: &str) -> StateComplianceConfig {
     get_config(state_code)
 }
@@ -56,18 +56,16 @@ pub fn get_config(state_code: &str) -> StateComplianceConfig {
         .unwrap_or_else(|| configs()[DEFAULT_CODE].clone())
 }
 
-/// All configured state codes except DEFAULT.
 pub fn available_state_codes() -> Vec<String> {
     let mut list: Vec<String> = configs()
         .keys()
         .filter(|k| !k.eq_ignore_ascii_case(DEFAULT_CODE))
         .cloned()
         .collect();
-    list.sort_by(|a, b| a.cmp(b));
+    list.sort();
     list
 }
 
-/// TSS removal requirement for a development type.
 pub fn required_tss_percent(config: &StateComplianceConfig, development_type: &str) -> f64 {
     if development_type.eq_ignore_ascii_case("roadway") {
         if let Some(v) = config.roadway_tss_removal_percent {
@@ -75,6 +73,61 @@ pub fn required_tss_percent(config: &StateComplianceConfig, development_type: &s
         }
     }
     config.tss_removal_percent
+}
+
+/// 24-hour peak-control storm depths (inches) keyed by return period label.
+pub fn peak_storm_suite(state_code: &str) -> HashMap<&'static str, f64> {
+    let table: &[(&str, f64)] = match state_code.trim().to_uppercase().as_str() {
+        "NC" => &[
+            ("2-year", 3.0),
+            ("10-year", 4.5),
+            ("25-year", 5.5),
+            ("100-year", 7.2),
+        ],
+        "SC" => &[
+            ("2-year", 3.2),
+            ("10-year", 5.0),
+            ("25-year", 6.0),
+            ("100-year", 8.0),
+        ],
+        "VA" => &[
+            ("2-year", 3.0),
+            ("10-year", 4.8),
+            ("25-year", 5.8),
+            ("100-year", 7.5),
+        ],
+        "FL" => &[
+            ("2-year", 3.5),
+            ("10-year", 5.2),
+            ("25-year", 6.2),
+            ("100-year", 8.0),
+        ],
+        "TX" => &[
+            ("2-year", 3.2),
+            ("10-year", 4.7),
+            ("25-year", 5.7),
+            ("100-year", 7.5),
+        ],
+        "CA" => &[
+            ("2-year", 2.0),
+            ("10-year", 3.5),
+            ("25-year", 4.5),
+            ("100-year", 6.0),
+        ],
+        "NY" => &[
+            ("2-year", 3.5),
+            ("10-year", 5.5),
+            ("25-year", 6.5),
+            ("100-year", 8.5),
+        ],
+        _ => &[
+            ("2-year", 3.0),
+            ("10-year", 4.5),
+            ("25-year", 5.5),
+            ("100-year", 7.0),
+        ],
+    };
+    table.iter().copied().collect()
 }
 
 #[cfg(test)]
@@ -106,5 +159,12 @@ mod tests {
         let nc = get("NC");
         assert!((nc.tss_removal_percent - 85.0).abs() < 1e-6);
         assert!((required_tss_percent(&nc, "roadway") - 80.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn peak_suite_nc_has_four_storms() {
+        let suite = peak_storm_suite("NC");
+        assert_eq!(suite.len(), 4);
+        assert_eq!(suite["100-year"], 7.2);
     }
 }

@@ -162,8 +162,10 @@ mod tests {
 
     #[test]
     fn curb_opening_exceeds_grate_at_same_length() {
-        let g = grate_capacity_cfs(4.0, 0.15, 0.005);
-        let c = curb_opening_capacity_cfs(4.0, 0.15, 0.005);
+        // Curb opening's d^2.67 term dominates grate's d^1.5 only at deeper gutter flow.
+        let depth_ft = 1.0;
+        let g = grate_capacity_cfs(4.0, depth_ft, 0.005);
+        let c = curb_opening_capacity_cfs(4.0, depth_ft, 0.005);
         assert!(c > g);
     }
 
