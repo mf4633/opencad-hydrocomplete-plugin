@@ -507,6 +507,19 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             }
             true
         }
+        "HC_PRIMARY_INLET" => {
+            match civil_import::headwater_inlet_handle_from_drawn(entities(host)) {
+                Some(h) => host.push_info(&format!(
+                    "Headwater inlet handle {:X} - HC_EDIT {:X} area <ac> c <rv> tc <min>",
+                    h.value(),
+                    h.value()
+                )),
+                None => host.push_error(
+                    "No headwater inlet found — import or draw a dendritic HC network first.",
+                ),
+            }
+            true
+        }
         "HC_CIVIL_IMPORT" => {
             host.push_info(civil_import::usage());
             true

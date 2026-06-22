@@ -1,7 +1,7 @@
 //! `HC_CIVIL_IMPORT` — bridge Civil 3D sewer plan geometry (structure blocks +
 //! network lines) into HydroComplete XDATA structures and pipes.
 
-use std::collections::HashSet;
+use std::collections::{HashSet, VecDeque};
 
 use acadrust::entities::Insert;
 use acadrust::types::Vector3;
@@ -26,7 +26,7 @@ const STRUCT_LABEL_MATCH_FT: f64 = 75.0;
 const PIPE_LABEL_MATCH_FT: f64 = 35.0;
 
 pub fn usage() -> &'static str {
-    "HC_CIVIL_IMPORT [layer] [force] [d15] [n13]  — Civil 3D I-SEWER-NETWORK blocks+lines → HC network"
+    "HC_CIVIL_IMPORT [layer] [force] [d15] [n13] [area <ac>] [c <rv>] [tc <min>]  — Civil bridge; optional catchment on headwater inlet"
 }
 
 #[derive(Clone, Debug)]
@@ -36,6 +36,9 @@ pub struct CivilImportConfig {
     pub diameter_ft: f64,
     pub n: f64,
     pub match_tolerance_ft: f64,
+    pub catchment_area: Option<f64>,
+    pub catchment_c: Option<f64>,
+    pub catchment_tc: Option<f64>,
 }
 
 impl Default for CivilImportConfig {
@@ -46,6 +49,9 @@ impl Default for CivilImportConfig {
             diameter_ft: DEFAULT_DIAMETER_FT,
             n: DEFAULT_N,
             match_tolerance_ft: DEFAULT_MATCH_FT,
+            catchment_area: None,
+            catchment_c: None,
+            catchment_tc: None,
         }
     }
 }
@@ -99,29 +105,178 @@ fn parse_num(s: &str) -> Option<f64> {
 
 pub fn parse_config(args: &str) -> CivilImportConfig {
     let mut cfg = CivilImportConfig::default();
-    for token in args.split_whitespace() {
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    let mut i = 0;
+    while i < tokens.len() {
+        let token = tokens[i];
         let tl = token.to_ascii_lowercase();
-        if tl == "force" {
-            cfg.force = true;
-            continue;
-        }
-        if let Some(rest) = tl.strip_prefix('d') {
-            if let Ok(inches) = rest.parse::<u32>() {
-                cfg.diameter_ft = inches as f64 / 12.0;
-                continue;
+        match tl.as_str() {
+            "force" => {
+                cfg.force = true;
+                i += 1;
             }
-        }
-        if let Some(rest) = tl.strip_prefix('n') {
-            if let Ok(milli) = rest.parse::<u32>() {
-                cfg.n = milli as f64 / 1000.0;
-                continue;
+            "area" => {
+                if let Some(v) = tokens.get(i + 1).and_then(|s| parse_num(s)) {
+                    cfg.catchment_area = Some(v);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
             }
-        }
-        if !token.contains('\\') && !token.contains('/') && token.contains('-') {
-            cfg.layer = token.to_string();
+            "c" => {
+                if let Some(v) = tokens.get(i + 1).and_then(|s| parse_num(s)) {
+                    cfg.catchment_c = Some(v);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            "tc" => {
+                if let Some(v) = tokens.get(i + 1).and_then(|s| parse_num(s)) {
+                    cfg.catchment_tc = Some(v);
+                    i += 2;
+                } else {
+                    i += 1;
+                }
+            }
+            _ => {
+                if let Some(rest) = tl.strip_prefix('d') {
+                    if let Ok(inches) = rest.parse::<u32>() {
+                        cfg.diameter_ft = inches as f64 / 12.0;
+                        i += 1;
+                        continue;
+                    }
+                }
+                if let Some(rest) = tl.strip_prefix('n') {
+                    if let Ok(milli) = rest.parse::<u32>() {
+                        cfg.n = milli as f64 / 1000.0;
+                        i += 1;
+                        continue;
+                    }
+                }
+                if !token.contains('\\') && !token.contains('/') && token.contains('-') {
+                    cfg.layer = token.to_string();
+                }
+                i += 1;
+            }
         }
     }
     cfg
+}
+
+fn pipe_topology_degrees(n: usize, pipe_pairs: &[(usize, usize)]) -> (Vec<usize>, Vec<usize>) {
+    let mut in_d = vec![0usize; n];
+    let mut out_d = vec![0usize; n];
+    for &(from, to) in pipe_pairs {
+        if from < n && to < n && from != to {
+            out_d[from] += 1;
+            in_d[to] += 1;
+        }
+    }
+    (in_d, out_d)
+}
+
+fn downstream_reach(n: usize, start: usize, pipe_pairs: &[(usize, usize)]) -> usize {
+    let mut adj = vec![Vec::new(); n];
+    for &(f, t) in pipe_pairs {
+        if f < n && t < n && f != t {
+            adj[f].push(t);
+        }
+    }
+    let mut seen = HashSet::new();
+    let mut q = VecDeque::new();
+    seen.insert(start);
+    q.push_back(start);
+    while let Some(u) = q.pop_front() {
+        for &v in &adj[u] {
+            if seen.insert(v) {
+                q.push_back(v);
+            }
+        }
+    }
+    seen.len()
+}
+
+/// Index of the dendritic headwater structure (no incoming pipes, at least one outgoing).
+pub(crate) fn headwater_inlet_index(
+    structs: &[CivilStructure],
+    pipe_pairs: &[(usize, usize)],
+) -> Option<usize> {
+    let n = structs.len();
+    if n == 0 {
+        return None;
+    }
+    let (in_d, out_d) = pipe_topology_degrees(n, pipe_pairs);
+    let mut candidates: Vec<usize> = (0..n)
+        .filter(|&i| in_d[i] == 0 && out_d[i] > 0 && structs[i].kind != NodeKind::Outfall)
+        .collect();
+    if candidates.is_empty() {
+        candidates = (0..n)
+            .filter(|&i| out_d[i] > 0 && structs[i].kind != NodeKind::Outfall)
+            .collect();
+    }
+    if candidates.is_empty() {
+        return None;
+    }
+    candidates.sort_by(|&a, &b| {
+        let rank = |i: usize| {
+            let kind_score = match structs[i].kind {
+                NodeKind::Inlet => 0,
+                NodeKind::Junction => 1,
+                NodeKind::Outfall => 2,
+            };
+            (kind_score, -(downstream_reach(n, i, pipe_pairs) as i32), i)
+        };
+        rank(a).cmp(&rank(b))
+    });
+    Some(candidates[0])
+}
+
+pub fn headwater_inlet_handle_from_drawn<'a>(
+    entities: impl Iterator<Item = &'a EntityType>,
+) -> Option<Handle> {
+    let drawn = data::drawn_network_from_entities(entities).ok()?;
+    let n = drawn.network.nodes.len();
+    if n == 0 {
+        return None;
+    }
+    let mut id_to_idx = std::collections::HashMap::new();
+    for (i, node) in drawn.network.nodes.iter().enumerate() {
+        id_to_idx.insert(node.id.clone(), i);
+    }
+    let mut in_d = vec![0usize; n];
+    let mut out_d = vec![0usize; n];
+    let mut pairs = Vec::new();
+    for pipe in &drawn.network.pipes {
+        let Some(&from) = id_to_idx.get(&pipe.from) else {
+            continue;
+        };
+        let Some(&to) = id_to_idx.get(&pipe.to) else {
+            continue;
+        };
+        if from != to {
+            pairs.push((from, to));
+            out_d[from] += 1;
+            in_d[to] += 1;
+        }
+    }
+    let structs: Vec<CivilStructure> = drawn
+        .network
+        .nodes
+        .iter()
+        .map(|node| CivilStructure {
+            block_name: String::new(),
+            x: node.x,
+            y: node.y,
+            kind: node.kind,
+            invert: node.invert,
+            rim: node.rim,
+            invert_from_label: false,
+            rim_from_label: false,
+        })
+        .collect();
+    let idx = headwater_inlet_index(&structs, &pairs)?;
+    drawn.node_handles.get(idx).copied()
 }
 
 /// Classify structure kind from a Civil plan label (e.g. `4 CB-3`, `2 UG DET OUT`).
@@ -849,6 +1004,33 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
 
     apply_downstream_inverts(&handles, &pipe_pairs, &structs, host);
 
+    let headwater_idx = headwater_inlet_index(&structs, &pipe_pairs);
+    let mut catchment_note = String::new();
+    if let (Some(idx), Some(area)) = (headwater_idx, cfg.catchment_area) {
+        let h = handles[idx];
+        let c_val = cfg.catchment_c.unwrap_or(DEFAULT_C);
+        let tc_val = cfg.catchment_tc.unwrap_or(10.0);
+        if let Some(ent) = find_structure_mut(host, h) {
+            if let Some(mut info) = data::read_structure_info(ent) {
+                if info.kind != NodeKind::Outfall {
+                    info.area = area;
+                    info.c = c_val;
+                    info.tc_inlet = tc_val;
+                    data::write_structure_info(ent, &info);
+                    catchment_note = format!(
+                        " Headwater inlet {:X}: area={area:.2} ac C={c_val:.2} Tc={tc_val:.0} min.",
+                        h.value()
+                    );
+                }
+            }
+        }
+    } else if let Some(idx) = headwater_idx {
+        catchment_note = format!(
+            " Headwater inlet {:X} (use HC_EDIT or area/c/tc args to set catchment).",
+            handles[idx].value()
+        );
+    }
+
     host.bump_geometry();
     host.set_dirty();
 
@@ -874,7 +1056,7 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         .count();
 
     let msg = format!(
-        "Civil import from \"{}\": {} structure(s) ({} inlet, {} outfall), {} MText + {} pipe Text label(s) ({} structures matched), {} line(s) XDATA-tagged ({} w/ dia label, {} matched, {} skipped), {} pipe(s) in network, default dia={:.2} ft n={:.3}.",
+        "Civil import from \"{}\": {} structure(s) ({} inlet, {} outfall), {} MText + {} pipe Text label(s) ({} structures matched), {} line(s) XDATA-tagged ({} w/ dia label, {} matched, {} skipped), {} pipe(s) in network, default dia={:.2} ft n={:.3}.{catchment_note}",
         cfg.layer,
         structs.len(),
         inlets,
@@ -945,6 +1127,81 @@ mod tests {
         assert!(cfg.force);
         assert!((cfg.diameter_ft - 1.5).abs() < 1e-9);
         assert!((cfg.n - 0.015).abs() < 1e-9);
+    }
+
+    #[test]
+    fn parse_config_reads_catchment_tokens() {
+        let cfg = parse_config("I-SEWER-NETWORK d15 n13 area 1.5 c 0.78 tc 15");
+        assert_eq!(cfg.layer, "I-SEWER-NETWORK");
+        assert!((cfg.catchment_area.unwrap() - 1.5).abs() < 1e-9);
+        assert!((cfg.catchment_c.unwrap() - 0.78).abs() < 1e-9);
+        assert!((cfg.catchment_tc.unwrap() - 15.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn headwater_picks_source_without_incoming_pipes() {
+        let structs = vec![
+            CivilStructure {
+                block_name: "CB".into(),
+                x: 0.0,
+                y: 0.0,
+                kind: NodeKind::Inlet,
+                invert: 100.0,
+                rim: 106.0,
+                invert_from_label: false,
+                rim_from_label: false,
+            },
+            CivilStructure {
+                block_name: "SPT65".into(),
+                x: 100.0,
+                y: 0.0,
+                kind: NodeKind::Junction,
+                invert: 99.0,
+                rim: 105.0,
+                invert_from_label: false,
+                rim_from_label: false,
+            },
+            CivilStructure {
+                block_name: "OUT".into(),
+                x: 200.0,
+                y: 0.0,
+                kind: NodeKind::Outfall,
+                invert: 98.0,
+                rim: 104.0,
+                invert_from_label: false,
+                rim_from_label: false,
+            },
+        ];
+        let pairs = vec![(0, 1), (1, 2)];
+        assert_eq!(headwater_inlet_index(&structs, &pairs), Some(0));
+    }
+
+    #[test]
+    fn headwater_promotes_upstream_junction_when_no_explicit_inlet() {
+        let structs = vec![
+            CivilStructure {
+                block_name: "SPT65".into(),
+                x: 0.0,
+                y: 0.0,
+                kind: NodeKind::Junction,
+                invert: 100.0,
+                rim: 106.0,
+                invert_from_label: false,
+                rim_from_label: false,
+            },
+            CivilStructure {
+                block_name: "SPT65".into(),
+                x: 100.0,
+                y: 0.0,
+                kind: NodeKind::Junction,
+                invert: 99.0,
+                rim: 105.0,
+                invert_from_label: false,
+                rim_from_label: false,
+            },
+        ];
+        let pairs = vec![(0, 1)];
+        assert_eq!(headwater_inlet_index(&structs, &pairs), Some(0));
     }
 
     #[test]

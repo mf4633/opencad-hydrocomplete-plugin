@@ -48,10 +48,10 @@ Write-Host ""
 Write-Host "--- HC_CIVIL_IMPORT ---"
 $out = Invoke-Ocs @(
     $openJson
-    '{"op":"run","cmd":"HC_CIVIL_IMPORT I-SEWER-NETWORK d15 n13"}'
+    '{"op":"run","cmd":"HC_CIVIL_IMPORT I-SEWER-NETWORK d15 n13 area 1.5 c 0.78 tc 15"}'
+    '{"op":"run","cmd":"HC_PRIMARY_INLET"}'
     '{"op":"run","cmd":"HC_NETWORK"}'
     '{"op":"run","cmd":"HC_VALIDATE"}'
-    '{"op":"run","cmd":"HC_EDIT 2B area 1.5 c 0.78 tc 15"}'
     '{"op":"run","cmd":"HC_PARAMS PRESET asheville-nc 10"}'
     '{"op":"run","cmd":"HC_ANALYZE"}'
     '{"op":"run","cmd":"HC_REPORT"}'

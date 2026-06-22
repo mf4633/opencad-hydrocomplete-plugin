@@ -22,6 +22,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - **Drawing params persistence** — `HYDROCOMPLETE_PARAMS` XDATA marker stores IDF/hydraulics/sizing with the DWG; restored on open so `HC_REPORT` works without re-running `HC_PARAMS`
 - `scripts/open_demo_reports.ps1` — open saved demos, verify Charlotte `a=81.2` and non-zero Q
+- **Headwater inlet auto-pick** — `HC_CIVIL_IMPORT ... area <ac> c <rv> tc <min>` applies catchment to dendritic head; `HC_PRIMARY_INLET` reports handle for `HC_EDIT`
 
 ### Changed
 
