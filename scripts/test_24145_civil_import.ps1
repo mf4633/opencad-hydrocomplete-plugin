@@ -1,4 +1,4 @@
-# HC_CIVIL_IMPORT on 24-145 X-DRAINAGE.dwg — Civil 3D I-SEWER-NETWORK bridge test.
+# HC_CIVIL_IMPORT on 24-145 X-DRAINAGE.dwg - Civil 3D I-SEWER-NETWORK bridge test.
 $ErrorActionPreference = "Stop"
 $Root = Split-Path $PSScriptRoot -Parent
 $Ocs = "C:\Users\michael.flynn\Downloads\OpenCADStudio-v0.6.0-windows-x86_64-portable.exe"
@@ -26,7 +26,7 @@ function Invoke-Ocs([string[]]$cmds) {
 }
 
 Write-Host ""
-Write-Host "=== 24-145 X-DRAINAGE — HC_CIVIL_IMPORT ==="
+Write-Host "=== 24-145 X-DRAINAGE - HC_CIVIL_IMPORT ==="
 Write-Host "DWG: $Dwg"
 Write-Host ""
 
@@ -86,7 +86,8 @@ if ($pdf) { Write-Host "PDF:    $($pdf.FullName)" }
 
 Start-Process $html.FullName
 if ($pdf) { Start-Process $pdf.FullName }
-Start-Process $Ocs -ArgumentList "`"$(($OutDwg -replace '/', '\'))`""
+$outPathWin = $OutDwg -replace '/', '\'
+Start-Process -FilePath $Ocs -ArgumentList ('"' + $outPathWin + '"')
 
 Write-Host ""
 Write-Host "24-145 CIVIL IMPORT TEST PASSED"
