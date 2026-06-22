@@ -46,10 +46,8 @@ Civil 3D reads native pipe networks; OpenCAD stores hydraulics on drawing entiti
 | `HC_SIZE` | 0.1 | Standard pipe sizing |
 | `HC_HGL` / `HC_PROFILE` | 0.1 | HGL long-section profile |
 | `HC_REPORT` | 0.2 | Formula-transparent HTML report (Manning + HGL + capacity) → `Documents/HydroComplete/` |
-| `HC_REPORT_PDF` | stub | Pro-only PDF export (free alternative: `HC_REPORT` HTML) |
 | `HC_MULTIRP` | 0.1 | Multi return-period table |
 | `HC_RATIONAL` | 0.1 | Rational Q from catchments |
-| `HC_ATLAS14` | 0.1 | Embedded IDF preset list (live PFDS fetch planned) |
 | `HC_PARAMS` | 0.1 | Storm analysis parameters (IDF, hydraulics) |
 | `HC_PIPES_WRITE` | 0.2 | Label Qfull/Vfull on layer `HC-CAPACITY` |
 | `HC_CAPACITY_WRITE` | 0.2 | Overload labels on layer `HC-CAPACITY` |
@@ -57,8 +55,11 @@ Civil 3D reads native pipe networks; OpenCAD stores hydraulics on drawing entiti
 | `HC_ANALYZE` | 0.2 | Full-network analysis + surcharge/flood styling |
 | `HC_SCS` | 0.2 | SCS CN runoff (default P=3 in) |
 | `HC_LANDXML_IMPORT` | 0.2 | Import LandXML network (ribbon file dialog or path) |
-| `HC_INLET` / `HC_JUNCTION` / `HC_OUTFALL` / `HC_PIPE` | 0.1 / 0.2 | Coordinate placement (0.1); interactive click/pick (0.2) |
-| `HC_EDIT` | 0.2 | Edit XDATA fields |
+| `HC_INLET` / `HC_JUNCTION` / `HC_OUTFALL` / `HC_PIPE` | 0.1 / 0.2 | Coordinate/handle placement; interactive click/pick (0.2) |
+| `HC_PIPE_ARGS` | 0.4.1 | Non-interactive pipes for OCS `--serve` (`d15 n13` = 15 in dia, n=0.013) — see `docs/OCS_SERVE.md` |
+| `HC_EDIT` | 0.2 | Edit XDATA fields (hex handles: `HC_EDIT 2B area 2.0`) |
+| `HC_REPORT_PDF` | 0.4 | Pro PDF export via `printpdf` (Free: use `HC_REPORT` HTML) |
+| `HC_ATLAS14` | 0.4 | Embedded presets + `LIVE` PFDS fetch + `APPLY` to tab IDF |
 | `HC_REVIEW`, `HC_DETENTION`, `HC_BMP_*`, … | — | Stubs — port from `HydroComplete.Engine` |
 
 ### `HC_VALIDATE` checks
@@ -83,19 +84,29 @@ XDATA, no structures, structures-without-pipes.
 | Pipe size reduces downstream | downstream Ø < upstream Ø at a node | warning |
 | Surface flooding | HGL above rim | error |
 
-### Example workflow (v0.2)
+### Example workflow (GUI)
 
 ```
 HC_INLET 0,0 104 110 1.0 0.7
 HC_OUTFALL 200,0 100 106
-HC_PIPE 1 2 1.5 0.013
+HC_PIPE 2B 2C 1.5 0.013
+HC_PARAMS PRESET charlotte-nc 10
 HC_VALIDATE
 HC_ANALYZE
-HC_PIPES
-HC_CAPACITY
-HC_HGL
 HC_REPORT
 ```
+
+### OCS `--serve` automation
+
+`HC_PIPE` starts interactive mode in OCS v0.6.0 and drops diameter decimals. Use **`HC_PIPE_ARGS`** or LandXML import:
+
+```
+HC_LANDXML_IMPORT path/to/network.xml
+HC_PARAMS PRESET charlotte-nc 10
+HC_REPORT
+```
+
+Manual pipes in serve: `HC_PIPE_ARGS 2B 2C d15 n13` (15 in = 1.25 ft). Details: `docs/OCS_SERVE.md`.
 
 ## Parity roadmap
 

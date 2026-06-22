@@ -1,7 +1,7 @@
 //! `HC_ABOUT` command text — mirrors HydroComplete.Civil3D 1.4.0 listing.
 
 pub const ABOUT_LINES: &[&str] = &[
-    "=== HydroComplete for Open CAD Studio 0.4.0 ===",
+    "=== HydroComplete for Open CAD Studio 0.4.1 ===",
     "  HC_NETWORK       Per-network summary (pipes, length, inverts, diameters, structures)",
     "  HC_PIPES         Manning capacity of every pipe (circular, box, arch)",
     "  HC_PIPES_WRITE   Label Qfull/Vfull on layer HC-CAPACITY",
@@ -48,6 +48,7 @@ pub const ABOUT_LINES: &[&str] = &[
     "  HC_ACTIVATE      Activate Pro with email + beta token (hc_live_*)",
     "  HC_LICENSE       Show Free/Pro license status and activation info",
     "  HC_INLET / HC_JUNCTION / HC_OUTFALL / HC_PIPE  Place network geometry (OpenCAD)",
+    "  HC_PIPE_ARGS       Non-interactive pipe placement (OCS --serve; d15 n13 = 15 in, n=0.013)",
     "  HC_EDIT          Edit structure or pipe XDATA",
     "  HC_ABOUT         This list",
     "  Engine: Rational, TR-55 Tc, Manning (circular/box/arch), GVF, detention, BMP/WQV, LandXML, HEC-22.",

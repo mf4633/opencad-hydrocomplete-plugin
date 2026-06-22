@@ -184,7 +184,7 @@ h1{font-size:1.4rem;} h2{font-size:1.15rem;margin-top:28px;} h3{font-size:1rem;m
 h4{font-size:0.95rem;margin-top:12px;} h5{font-size:0.9rem;margin-top:8px;}
 table{border-collapse:collapse;width:100%;margin:16px 0;}
 th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:0.9rem;}
-th{background:#f0f4f8;} tr.surcharged{background:#ffe6e6;}
+th{background:#f0f4f8;} tr.surcharged{background:#ffe6e6;} tr.capacity-na{background:#fff8e6;}
 .disclaimer{margin-top:24px;padding:12px;background:#fff8e6;border:1px solid #e6c200;}
 .hc-formula-panel{margin:12px 0;}
 .hc-formula-step{border:1px solid #e0e6ed;border-radius:6px;padding:10px 12px;margin:8px 0;background:#fafbfc;}
@@ -236,7 +236,7 @@ fn pipe_by_id<'a>(net: &'a Network) -> HashMap<&'a str, &'a Pipe> {
 fn manning_steps(pipe: &Pipe, pr: &stormsewer::network::PipeResult) -> Vec<CalcStep> {
     let d = pipe.diameter;
     let n = pipe.n;
-    let s = pr.slope;
+    let s = pr.manning_slope;
     let area = full_area(d);
     let radius = d / 4.0;
     let q_full = pr.capacity;
@@ -294,9 +294,16 @@ fn hgl_steps(
 fn append_manning_section(out: &mut String, net: &Network, a: &Analysis) {
     let pipes = pipe_by_id(net);
     out.push_str("<h2>Manning Pipe Capacity</h2>\n");
+    let flat = a.pipes.iter().any(|pr| pr.slope <= 0.0);
     out.push_str(
         "<p>Method: Manning full-barrel capacity for circular pipes (US customary, n=0.013 default).</p>\n",
     );
+    if flat {
+        out.push_str(
+            "<p><em>Note: one or more pipes have flat or missing invert drop; Manning capacity uses the \
+             minimum assumed slope from analysis options for those reaches.</em></p>\n",
+        );
+    }
     out.push_str("<table><thead><tr>\n");
     out.push_str("<th>Network / Pipe</th><th>Dia (ft)</th><th>Slope</th><th>Q<sub>full</sub> (cfs)</th><th>V<sub>full</sub> (fps)</th>\n");
     out.push_str("</tr></thead><tbody>\n");
@@ -304,13 +311,23 @@ fn append_manning_section(out: &mut String, net: &Network, a: &Analysis) {
         let Some(pipe) = pipes.get(pr.id.as_str()) else {
             continue;
         };
+        let (q_full, v_full) = if pr.capacity_unavailable() {
+            ("N/A".to_string(), "N/A".to_string())
+        } else {
+            (f(pr.capacity, 2), f(pr.velocity_full, 2))
+        };
+        let slope_cell = if pr.slope <= 0.0 && pr.manning_slope > 0.0 {
+            format!("{}*", f(pr.manning_slope, 4))
+        } else {
+            f(pr.slope, 4)
+        };
         out.push_str(&format!(
             "<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
             esc(&trim(&format!("Network/{}", pr.id), 48)),
             f(pipe.diameter, 2),
-            f(pr.slope, 4),
-            f(pr.capacity, 2),
-            f(pr.velocity_full, 2),
+            slope_cell,
+            esc(&q_full),
+            esc(&v_full),
         ));
     }
     out.push_str("</tbody></table>\n");
@@ -333,7 +350,8 @@ fn append_capacity_section(out: &mut String, net: &Network, a: &Analysis, design
     out.push_str("<h2>Design Capacity Check</h2>\n");
     out.push_str(&format!(
         "<p>Method: Manning normal depth at per-pipe routed catchment Q (system total = <strong>{} cfs</strong>). \
-         Surcharge when Q exceeds peak open-channel capacity (d/D &rarr; 1.0).</p>\n",
+         Surcharge when Q exceeds peak open-channel capacity (d/D &rarr; 1.0). \
+         Zero or adverse slope: capacity is N/A (not a surcharge). Flat inverts use minimum assumed slope for Manning.</p>\n",
         f(design_flow_cfs, 2)
     ));
     out.push_str("<table><thead><tr>\n");
@@ -341,35 +359,50 @@ fn append_capacity_section(out: &mut String, net: &Network, a: &Analysis, design
     out.push_str("<th>Q<sub>des</sub>/Q<sub>full</sub></th><th>d/D</th><th>SURCH</th>\n");
     out.push_str("</tr></thead><tbody>\n");
     for pr in &a.pipes {
-        let row_class = if pr.surcharged {
+        let row_class = if pr.capacity_unavailable() {
+            r#" class="capacity-na""#
+        } else if pr.report_surcharged() {
             r#" class="surcharged""#
         } else {
             ""
         };
-        let flow_ratio = if pr.capacity > 0.0 {
-            pr.design_q / pr.capacity
+        let (flow_ratio, d_over_d, surch_flag) = if pr.capacity_unavailable() {
+            (
+                "N/A".to_string(),
+                pr.capacity_na_label().to_string(),
+                String::new(),
+            )
         } else {
-            0.0
-        };
-        let d_over_d = if pr.surcharged {
-            "SURCH".to_string()
-        } else {
-            pipes
-                .get(pr.id.as_str())
-                .and_then(|pipe| {
-                    pr.normal_depth
-                        .map(|y| format!("{:.2}", y / pipe.diameter))
-                })
-                .unwrap_or_else(|| "1.00".into())
+            let ratio = if pr.capacity > 0.0 {
+                f(pr.design_q / pr.capacity, 2)
+            } else {
+                "N/A".into()
+            };
+            let d = if pr.report_surcharged() {
+                "SURCH".to_string()
+            } else {
+                pipes
+                    .get(pr.id.as_str())
+                    .and_then(|pipe| {
+                        pr.normal_depth
+                            .map(|y| format!("{:.2}", y / pipe.diameter))
+                    })
+                    .unwrap_or_else(|| "1.00".into())
+            };
+            (ratio, d, if pr.report_surcharged() { "*" } else { "" }.to_string())
         };
         out.push_str(&format!(
             "<tr{row_class}><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>\n",
             esc(&trim(&format!("Network/{}", pr.id), 48)),
-            f(pr.capacity, 1),
+            if pr.capacity_unavailable() {
+                "N/A".to_string()
+            } else {
+                f(pr.capacity, 1)
+            },
             f(pr.design_q, 1),
-            f(flow_ratio, 2),
+            esc(&flow_ratio),
             esc(&d_over_d),
-            if pr.surcharged { "*" } else { "" },
+            esc(&surch_flag),
         ));
     }
     out.push_str("</tbody></table>\n");
@@ -421,12 +454,16 @@ fn append_hgl_section(out: &mut String, net: &Network, a: &Analysis, params: &St
             (Some(up), Some(dn)) => (up - dn - hm).max(0.0),
             _ => 0.0,
         };
-        let row_class = if pr.surcharged {
+        let row_class = if pr.capacity_unavailable() {
+            r#" class="capacity-na""#
+        } else if pr.report_surcharged() {
             r#" class="surcharged""#
         } else {
             ""
         };
-        let d_over_d = if pr.surcharged {
+        let d_over_d = if pr.capacity_unavailable() {
+            pr.capacity_na_label().to_string()
+        } else if pr.report_surcharged() {
             "SURCH".to_string()
         } else {
             pr.normal_depth
@@ -443,7 +480,7 @@ fn append_hgl_section(out: &mut String, net: &Network, a: &Analysis, params: &St
             f(hm, 2),
             esc(&hup),
             esc(&hdn),
-            if pr.surcharged { "*" } else { "" },
+            if pr.report_surcharged() { "*" } else { "" },
         ));
     }
     out.push_str("</tbody></table>\n");
@@ -511,6 +548,59 @@ mod tests {
         let idf = IdfCurve::new(60.0, 10.0, 0.8);
         let a = net.analyze(&idf, &Default::default()).unwrap();
         (net, a)
+    }
+
+    #[test]
+    fn adverse_slope_report_shows_capacity_na_not_surch() {
+        let net = Network {
+            nodes: vec![
+                Node::inlet("N1", 100.0, 106.0, 1.0, 0.70).with_tc_inlet(12.0),
+                Node::outfall("OUT", 102.0, 106.0),
+            ],
+            pipes: vec![Pipe::new("P1", "N1", "OUT", 100.0, 1.5, 0.013)],
+        };
+        let a = net
+            .analyze(&IdfCurve::new(60.0, 10.0, 0.8), &Default::default())
+            .unwrap();
+        let html = format_hydraulic_report_html(
+            &net,
+            &a,
+            &StormAnalysisParams::default(),
+            &HtmlReportMeta::default(),
+        );
+        assert!(html.contains("ADVERSE SLOPE — capacity N/A"));
+        assert!(html.contains("capacity-na"));
+        let cap_row = html
+            .lines()
+            .find(|l| l.contains("Network/P1") && l.contains("capacity-na"))
+            .expect("capacity row");
+        assert!(!cap_row.contains(">SURCH<"));
+        assert!(!cap_row.contains(">*</td>"));
+    }
+
+    #[test]
+    fn flat_inverts_use_assumed_slope_for_capacity() {
+        let net = Network {
+            nodes: vec![
+                Node::inlet("N1", 100.0, 106.0, 1.0, 0.70).with_tc_inlet(12.0),
+                Node::outfall("OUT", 100.0, 106.0),
+            ],
+            pipes: vec![Pipe::new("P1", "N1", "OUT", 100.0, 1.5, 0.013)],
+        };
+        let idf = IdfCurve::new(60.0, 10.0, 0.8);
+        let a = net.analyze(&idf, &Default::default()).unwrap();
+        assert!((a.pipes[0].slope).abs() < 1e-12);
+        assert!((a.pipes[0].manning_slope - 0.001).abs() < 1e-12);
+        assert!(!a.pipes[0].capacity_unavailable());
+        assert!(a.pipes[0].capacity > 0.0);
+        let html = format_hydraulic_report_html(
+            &net,
+            &a,
+            &StormAnalysisParams::default(),
+            &HtmlReportMeta::default(),
+        );
+        assert!(html.contains("minimum assumed slope"));
+        assert!(html.contains("0.0010*"));
     }
 
     #[test]

@@ -33,6 +33,24 @@ pub const APP_STRUCT: &str = "HYDROCOMPLETE_STRUCT";
 pub const APP_PIPE: &str = "HYDROCOMPLETE_PIPE";
 pub const APP_CATCHMENT: &str = "HYDROCOMPLETE_CATCHMENT";
 
+/// Parse an entity handle from decimal (`43`) or hex (`2B`, as shown in OCS).
+pub fn parse_entity_handle(s: &str) -> Option<Handle> {
+    let t = s.trim();
+    if t.is_empty() {
+        return None;
+    }
+    if let Ok(v) = t.parse::<u64>() {
+        if v != 0 {
+            return Some(Handle::new(v));
+        }
+        return None;
+    }
+    u64::from_str_radix(t, 16)
+        .ok()
+        .filter(|&v| v != 0)
+        .map(Handle::new)
+}
+
 pub fn kind_str(k: NodeKind) -> &'static str {
     match k {
         NodeKind::Inlet => "inlet",

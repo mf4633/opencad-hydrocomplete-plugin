@@ -43,21 +43,62 @@ pub fn about_lines() -> Vec<&'static str> {
 pub fn network_summary_lines<'a>(
     entities: impl Iterator<Item = &'a EntityType>,
 ) -> Result<Vec<String>, String> {
-    let summaries = data::network_summaries(entities)?;
-    if summaries.is_empty() {
-        return Ok(vec!["No pipe networks found in this drawing.".into()]);
-    }
+    let drawn = data::drawn_network_from_entities(entities)?;
+    let summary = NetworkSummary {
+        network_name: "default".to_string(),
+        pipe_count: drawn.network.pipes.len(),
+        structure_count: drawn.network.nodes.len(),
+        total_length_ft: drawn.network.pipes.iter().map(|p| p.length).sum(),
+        min_diameter_in: drawn
+            .network
+            .pipes
+            .iter()
+            .map(|p| p.diameter * 12.0)
+            .fold(f64::INFINITY, f64::min)
+            .min(f64::INFINITY)
+            .max(0.0),
+        max_diameter_in: drawn
+            .network
+            .pipes
+            .iter()
+            .map(|p| p.diameter * 12.0)
+            .fold(0.0_f64, f64::max),
+        has_pipes: !drawn.network.pipes.is_empty(),
+    };
     let mut lines = vec![
-        format!(
-            "--- HydroComplete: pipe network summary ({} network(s)) ---",
-            summaries.len()
-        ),
+        "--- HydroComplete: pipe network summary (1 network(s)) ---".into(),
         "Network                 Pipes  Structs  Length(ft)   Dia(in) min-max".into(),
+        format_summary_line(&summary),
+        "Structures (invert / rim ft):".into(),
     ];
-    for s in summaries {
-        lines.push(format_summary_line(&s));
+    for (node, &h) in drawn.network.nodes.iter().zip(drawn.node_handles.iter()) {
+        lines.push(format!(
+            "  H{:<4} {:<9} invert={:.2} rim={:.2}",
+            h.value(),
+            data::kind_str(node.kind),
+            node.invert,
+            node.rim
+        ));
+    }
+    for (idx, pipe) in drawn.network.pipes.iter().enumerate() {
+        lines.push(format!(
+            "  P{:<3} dia={:.2} ft  L={:.0} ft  slope={:.4}",
+            idx + 1,
+            pipe.diameter,
+            pipe.length,
+            pipe_slope_from_network(&drawn.network, pipe)
+        ));
     }
     Ok(lines)
+}
+
+fn pipe_slope_from_network(net: &stormsewer::network::Network, pipe: &stormsewer::network::Pipe) -> f64 {
+    let up = net.nodes.iter().find(|n| n.id == pipe.from).map(|n| n.invert);
+    let dn = net.nodes.iter().find(|n| n.id == pipe.to).map(|n| n.invert);
+    match (up, dn, pipe.length) {
+        (Some(u), Some(d), l) if l > 0.0 => (u - d) / l,
+        _ => 0.0,
+    }
 }
 
 fn format_summary_line(s: &NetworkSummary) -> String {

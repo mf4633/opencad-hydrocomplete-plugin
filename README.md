@@ -32,7 +32,7 @@ opencad-hydrocomplete-plugin/
 
 ## Install
 
-**Plugin Manager → Add repository →** `mf4633/opencad-hydrocomplete-plugin`, pick a **v0.4.0+** release, **Install**, restart OCS.
+**Plugin Manager → Add repository →** `mf4633/opencad-hydrocomplete-plugin`, pick a **v0.4.1+** release, **Install**, restart OCS.
 
 Requires Open CAD Studio **v0.6.0+** (API v2, interactive commands).
 
@@ -47,7 +47,9 @@ Produces `opencad_hydrocomplete_plugin.dll` (Windows) / `libopencad_hydrocomplet
 
 ## Release
 
-Tag `v0.4.0` — CI attaches per-platform `opencad.hydrocomplete-*` binaries + `plugin.toml` to the GitHub Release for Plugin Manager.
+Tag `v0.4.1` — CI attaches per-platform `opencad.hydrocomplete-*` binaries + `plugin.toml` to the GitHub Release for Plugin Manager.
+
+OCS `--serve` automation notes: `docs/OCS_SERVE.md`.
 
 See [CHANGELOG.md](CHANGELOG.md) for version history.
 

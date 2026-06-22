@@ -715,13 +715,26 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             }
             true
         }
+        // No bare handler: OCS --serve dispatches the first token (`HC_PIPE_ARGS`) then
+        // the full line, so interactive tools would swallow trailing diameter/n tokens.
+        cmd if cmd.starts_with("HC_PIPE_ARGS ") => {
+            match placement::place_pipe(host, command_arg(cmd).unwrap_or("")) {
+                Ok(msg) => host.push_output(&msg),
+                Err(e) => host.push_error(&e),
+            }
+            true
+        }
+        "HC_PIPE_ARGS" => {
+            host.push_info(placement::usage_pipe_args());
+            true
+        }
         "HC_PIPE" => {
             host.start_interactive(Box::new(PlacePipeInteractive::new()));
             true
         }
         cmd if cmd.starts_with("HC_PIPE ") => {
             match placement::place_pipe(host, command_arg(cmd).unwrap_or("")) {
-                Ok(msg) => host.push_info(&msg),
+                Ok(msg) => host.push_output(&msg),
                 Err(e) => host.push_error(&e),
             }
             true

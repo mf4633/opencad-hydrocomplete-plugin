@@ -55,7 +55,7 @@ body{font-family:Segoe UI,Arial,sans-serif;margin:24px;color:#1a1a1a;}
 h1{font-size:1.4rem;} h2{font-size:1.15rem;margin-top:28px;} h3{font-size:1rem;margin-top:16px;}
 table{border-collapse:collapse;width:100%;margin:16px 0;}
 th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:0.9rem;}
-th{background:#f0f4f8;} tr.surcharged{background:#ffe6e6;} tr.flooding{background:#fff0f0;}
+th{background:#f0f4f8;} tr.surcharged{background:#ffe6e6;} tr.flooding{background:#fff0f0;} tr.capacity-na{background:#fff8e6;}
 .disclaimer{margin-top:24px;padding:12px;background:#fff8e6;border:1px solid #e6c200;font-size:0.85rem;}
 .hc-formula-panel{margin:12px 0;}
 .hc-formula-step{border:1px solid #e0e6ed;border-radius:6px;padding:10px 12px;margin:8px 0;background:#fafbfc;}
@@ -94,17 +94,28 @@ fn pipe_table_html(a: &Analysis) -> String {
 </tr></thead><tbody>"#,
     );
     for p in &a.pipes {
-        let row_class = if p.surcharged { r#" class="surcharged""# } else { "" };
+        let row_class = if p.capacity_unavailable() {
+            r#" class="capacity-na""#
+        } else if p.report_surcharged() {
+            r#" class="surcharged""#
+        } else {
+            ""
+        };
         let yn = p
             .normal_depth
             .map(|y| f(y, 2))
             .unwrap_or_else(|| "full".into());
         let hup = p.hgl_up.map(|h| f(h, 2)).unwrap_or_else(|| "--".into());
         let hdn = p.hgl_dn.map(|h| f(h, 2)).unwrap_or_else(|| "--".into());
-        let status = if p.surcharged {
-            r#"<span class="failtxt">SURCHARGED</span>"#
+        let status = if p.capacity_unavailable() {
+            format!(
+                r#"<span class="failtxt">{}</span>"#,
+                esc(p.capacity_na_label())
+            )
+        } else if p.report_surcharged() {
+            r#"<span class="failtxt">SURCHARGED</span>"#.to_string()
         } else {
-            r#"<span class="pass">ok</span>"#
+            r#"<span class="pass">ok</span>"#.to_string()
         };
         s.push_str(&format!(
             r#"<tr{row_class}><td>{id}</td><td>{from}</td><td>{to}</td>
@@ -303,7 +314,12 @@ pub fn format_analysis_html(
         out.push_str(&inlet);
     }
 
-    let surcharged: Vec<&str> = a.pipes.iter().filter(|p| p.surcharged).map(|p| p.id.as_str()).collect();
+    let surcharged: Vec<&str> = a
+        .pipes
+        .iter()
+        .filter(|p| p.report_surcharged())
+        .map(|p| p.id.as_str())
+        .collect();
     let flooding: Vec<&str> = a
         .nodes
         .iter()

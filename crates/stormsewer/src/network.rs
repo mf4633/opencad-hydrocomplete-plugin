@@ -103,6 +103,9 @@ pub struct PipeResult {
     pub to: String,
     /// Pipe slope from upstream/downstream inverts (ft/ft).
     pub slope: f64,
+    /// Slope used for Manning capacity (equals [`slope`](Self::slope) when positive;
+    /// otherwise [`AnalysisOptions::min_slope`](AnalysisOptions::min_slope) for flat inverts).
+    pub manning_slope: f64,
     /// Accumulated C*A draining into this pipe (acres).
     pub total_ca: f64,
     /// Design rainfall intensity used (in/hr).
@@ -135,6 +138,30 @@ pub struct PipeResult {
     pub hgl_dn: Option<f64>,
 }
 
+impl PipeResult {
+    /// Manning capacity cannot be compared to design Q (adverse slope, or flat/zero with no capacity).
+    pub fn capacity_unavailable(&self) -> bool {
+        self.manning_slope < 0.0 || (self.slope <= 0.0 && self.capacity <= 0.0)
+    }
+
+    /// True surcharge for reporting — excludes zero/adverse-slope false positives.
+    pub fn report_surcharged(&self) -> bool {
+        self.surcharged && !self.capacity_unavailable()
+    }
+
+    /// HTML/text label when [`Self::capacity_unavailable`] is true.
+    pub fn capacity_na_label(&self) -> &'static str {
+        if self.manning_slope < 0.0 {
+            "ADVERSE SLOPE — capacity N/A"
+        } else {
+            "ZERO SLOPE — capacity N/A"
+        }
+    }
+}
+
+/// Back-compat alias — prefer [`PipeResult::capacity_na_label`].
+pub const CAPACITY_NA_ZERO_SLOPE: &str = "ZERO SLOPE — capacity N/A";
+
 /// Per-node analysis result (populated by the HGL pass).
 #[derive(Clone, Debug)]
 pub struct NodeResult {
@@ -164,11 +191,30 @@ pub struct AnalysisOptions {
     pub junction_k: f64,
     /// If set, use this constant intensity (in/hr) instead of the IDF curve.
     pub intensity_override: Option<f64>,
+    /// Minimum slope (ft/ft) assumed for Manning capacity when pipe inverts are flat.
+    pub min_slope: f64,
 }
 
 impl Default for AnalysisOptions {
     fn default() -> Self {
-        Self { min_tc: 10.0, tailwater: None, junction_k: 0.5, intensity_override: None }
+        Self {
+            min_tc: 10.0,
+            tailwater: None,
+            junction_k: 0.5,
+            intensity_override: None,
+            min_slope: 0.001,
+        }
+    }
+}
+
+/// Bed slope from inverts; when flat (`bed == 0`), use `min_slope` for Manning capacity.
+fn manning_slope(bed_slope: f64, min_slope: f64) -> f64 {
+    if bed_slope > 0.0 {
+        bed_slope
+    } else if bed_slope < 0.0 {
+        bed_slope
+    } else {
+        min_slope
     }
 }
 
@@ -319,8 +365,9 @@ impl Network {
         let ca = self.accumulate_ca()?;
         let total_ca: Vec<f64> = self.nodes.iter().map(|nd| ca[&nd.id]).collect();
 
-        // Per-pipe scratch.
+        // Per-pipe scratch (bed slope from inverts).
         let mut p_slope = vec![0.0f64; n_pipes];
+        let mut p_manning_slope = vec![0.0f64; n_pipes];
         let mut p_intensity = vec![0.0f64; n_pipes];
         let mut p_q = vec![0.0f64; n_pipes];
         let mut p_vel = vec![0.0f64; n_pipes];
@@ -341,16 +388,17 @@ impl Network {
 
             for &(pi, v) in &outgoing[i] {
                 let p = &self.pipes[pi];
-                let slope = if p.length > 0.0 {
+                let bed_slope = if p.length > 0.0 {
                     (self.nodes[i].invert - self.nodes[v].invert) / p.length
                 } else {
                     0.0
                 };
+                let m_slope = manning_slope(bed_slope, opts.min_slope);
                 let intensity = opts.intensity_override.unwrap_or_else(|| idf.intensity(tc));
                 let q = intensity * total_ca[i];
-                let (q_max, _) = max_capacity(p.n, slope, p.diameter, k);
+                let (q_max, _) = max_capacity(p.n, m_slope, p.diameter, k);
                 let surcharged = q > q_max;
-                let yn = normal_depth(q, p.n, slope, p.diameter, k);
+                let yn = normal_depth(q, p.n, m_slope, p.diameter, k);
                 let area = if surcharged {
                     full_area(p.diameter)
                 } else {
@@ -359,7 +407,8 @@ impl Network {
                 let vel = if area > 0.0 { q / area } else { 0.0 };
                 let travel = if vel > 0.0 { p.length / vel / 60.0 } else { 0.0 };
 
-                p_slope[pi] = slope;
+                p_slope[pi] = bed_slope;
+                p_manning_slope[pi] = m_slope;
                 p_intensity[pi] = intensity;
                 p_q[pi] = q;
                 p_vel[pi] = vel;
@@ -420,7 +469,7 @@ impl Network {
             .iter()
             .enumerate()
             .map(|(pi, p)| {
-                let capacity = full_flow_capacity(p.n, p_slope[pi], p.diameter, k);
+                let capacity = full_flow_capacity(p.n, p_manning_slope[pi], p.diameter, k);
                 let velocity_full = if full_area(p.diameter) > 0.0 {
                     capacity / full_area(p.diameter)
                 } else {
@@ -431,13 +480,14 @@ impl Network {
                     from: p.from.clone(),
                     to: p.to.clone(),
                     slope: p_slope[pi],
+                    manning_slope: p_manning_slope[pi],
                     total_ca: total_ca[pe[pi].0],
                     intensity: p_intensity[pi],
                     tc: tc_node[pe[pi].0],
                     travel_time: p_travel[pi],
                     design_q: p_q[pi],
                     capacity,
-                    max_capacity: max_capacity(p.n, p_slope[pi], p.diameter, k).0,
+                    max_capacity: max_capacity(p.n, p_manning_slope[pi], p.diameter, k).0,
                     surcharged: p_surch[pi],
                     normal_depth: p_yn[pi],
                     critical_depth: critical_depth(p_q[pi], p.diameter, G_US),
@@ -507,6 +557,47 @@ mod tests {
     fn slope_from_inverts() {
         let r = sample().analyze_rational(4.0).unwrap();
         assert!((r[0].slope - 0.01).abs() < 1e-9);
+        assert!((r[0].manning_slope - 0.01).abs() < 1e-9);
+    }
+
+    #[test]
+    fn adverse_slope_is_capacity_unavailable_not_surcharged() {
+        let net = Network {
+            nodes: vec![
+                Node::inlet("N1", 100.0, 106.0, 1.0, 0.7),
+                Node::outfall("OUT", 102.0, 106.0),
+            ],
+            pipes: vec![Pipe::new("P1", "N1", "OUT", 100.0, 1.5, 0.013)],
+        };
+        let r = net
+            .analyze(&IdfCurve::new(60.0, 10.0, 0.8), &Default::default())
+            .unwrap();
+        let p = &r.pipes[0];
+        assert!(p.slope < 0.0);
+        assert!(p.capacity_unavailable());
+        assert_eq!(p.capacity_na_label(), "ADVERSE SLOPE — capacity N/A");
+        assert!(!p.report_surcharged());
+    }
+
+    #[test]
+    fn flat_inverts_assume_min_slope_for_manning() {
+        let net = Network {
+            nodes: vec![
+                Node::inlet("N1", 100.0, 105.0, 1.0, 0.7),
+                Node::outfall("OUT", 100.0, 105.0),
+            ],
+            pipes: vec![Pipe::new("P1", "N1", "OUT", 100.0, 1.5, 0.013)],
+        };
+        let opts = AnalysisOptions {
+            intensity_override: Some(4.0),
+            ..Default::default()
+        };
+        let r = net.analyze(&IdfCurve::new(60.0, 10.0, 0.8), &opts).unwrap();
+        let p = &r.pipes[0];
+        assert!((p.slope).abs() < 1e-12);
+        assert!((p.manning_slope - 0.001).abs() < 1e-12);
+        assert!(p.capacity > 0.0);
+        assert!(!p.capacity_unavailable());
     }
 
     #[test]

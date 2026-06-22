@@ -103,6 +103,67 @@ mod tests {
     }
 
     #[test]
+    fn two_pipe_diameters_reconstruct_correctly() {
+        let mut s1 = EntityType::Circle(Circle {
+            center: Vector3::new(0.0, 0.0, 0.0),
+            radius: 3.0,
+            ..Default::default()
+        });
+        s1.common_mut().handle = Handle::new(43);
+        s1.common_mut()
+            .extended_data
+            .add_record(structure_xdata(NodeKind::Inlet, 100.0, 106.0, 2.0, 0.75));
+
+        let mut s2 = EntityType::Circle(Circle {
+            center: Vector3::new(50.0, 0.0, 0.0),
+            radius: 4.0,
+            ..Default::default()
+        });
+        s2.common_mut().handle = Handle::new(44);
+        s2.common_mut()
+            .extended_data
+            .add_record(structure_xdata(NodeKind::Junction, 99.5, 105.5, 0.0, 0.0));
+
+        let mut s3 = EntityType::Circle(Circle {
+            center: Vector3::new(100.0, 0.0, 0.0),
+            radius: 6.0,
+            ..Default::default()
+        });
+        s3.common_mut().handle = Handle::new(45);
+        s3.common_mut()
+            .extended_data
+            .add_record(structure_xdata(NodeKind::Outfall, 99.0, 105.0, 0.0, 0.0));
+
+        let mut p1 = EntityType::Line(Line::from_points(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(50.0, 0.0, 0.0),
+        ));
+        p1.common_mut().handle = Handle::new(46);
+        p1.common_mut()
+            .extended_data
+            .add_record(pipe_xdata(1.25, 0.013, Handle::new(43), Handle::new(44)));
+
+        let mut p2 = EntityType::Line(Line::from_points(
+            Vector3::new(50.0, 0.0, 0.0),
+            Vector3::new(100.0, 0.0, 0.0),
+        ));
+        p2.common_mut().handle = Handle::new(47);
+        p2.common_mut()
+            .extended_data
+            .add_record(pipe_xdata(1.50, 0.013, Handle::new(44), Handle::new(45)));
+
+        let ents = vec![s1, s2, s3, p1, p2];
+        let net = crate::data::network_from_entities(ents.iter()).expect("network");
+        assert_eq!(net.pipes.len(), 2);
+        assert!((net.pipes[0].diameter - 1.25).abs() < 1e-6, "P1 dia {}", net.pipes[0].diameter);
+        assert!((net.pipes[1].diameter - 1.50).abs() < 1e-6);
+        let params = StormAnalysisParams::municipal();
+        let a = analysis::run_analysis_on_network(&net, &params).unwrap();
+        assert!(a.pipes[0].capacity > 0.0);
+        assert!((a.pipes[0].slope - 0.01).abs() < 1e-4, "P1 slope {}", a.pipes[0].slope);
+    }
+
+    #[test]
     fn apply_tc_map_updates_structure_xdata() {
         let mut ents = drawn_inlet_outfall_pipe();
         let mut tc = std::collections::HashMap::new();

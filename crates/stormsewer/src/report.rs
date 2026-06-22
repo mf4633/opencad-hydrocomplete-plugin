@@ -164,7 +164,12 @@ pub fn format_analysis(a: &Analysis) -> String {
     s.push('\n');
     s.push_str(&node_table(a));
     // Summary flags.
-    let surcharged: Vec<&str> = a.pipes.iter().filter(|p| p.surcharged).map(|p| p.id.as_str()).collect();
+    let surcharged: Vec<&str> = a
+        .pipes
+        .iter()
+        .filter(|p| p.report_surcharged())
+        .map(|p| p.id.as_str())
+        .collect();
     let flooding: Vec<&str> = a.nodes.iter().filter(|n| n.surcharge_to_surface).map(|n| n.id.as_str()).collect();
     s.push('\n');
     if surcharged.is_empty() && flooding.is_empty() {

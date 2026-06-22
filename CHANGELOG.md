@@ -4,6 +4,22 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.1] - 2026-06-22
+
+### Fixed
+
+- **Hydraulic reports** — flat inverts no longer show zero slope / false surcharge everywhere; Manning uses `min_slope` when bed slope is flat; adverse slope labeled `ADVERSE SLOPE — capacity N/A` (not flat)
+- **`HC_PIPE` handle parsing** — hex handles (`2B`, `2C`); `43 44 1.25 0.013` no longer misparsed as coordinates
+- **Pipe placement** — lines snap to structure centers; downstream invert auto-step on flat runs
+- **OCS `--serve`** — `HC_PIPE_ARGS 2B 2C d15 n13` serve-safe pipe placement (workaround for OCS `run_headless` interactive split; see `docs/OCS_SERVE.md`)
+
+### Added
+
+- `HC_PIPE_ARGS` — non-interactive pipe command for automation (`d##` inches, `n##` milli-n)
+- `HC_NETWORK` — per-structure inverts and per-pipe diameter/slope in summary
+- Demo scripts: `build_hydro_demo.ps1`, `build_manual_pipe_demo.ps1`, `test_slope_report.ps1`
+- 143 workspace tests
+
 ## [0.4.0] - 2026-06-22
 
 ### Added
@@ -78,6 +94,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `stormsewer` engine crate — Rational, Manning, HGL, IDF, LandXML, design review
 - GPL-3.0-only license
 
+[0.4.1]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.1.0...v0.2.0

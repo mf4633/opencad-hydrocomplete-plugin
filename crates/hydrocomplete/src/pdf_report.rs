@@ -5,7 +5,7 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use printpdf::{BuiltinFont, Mm, PdfDocument};
-use stormsewer::hydraulics::{full_flow_capacity, K_MANNING_US};
+
 use stormsewer::network::{Analysis, Network};
 use stormsewer::params::StormAnalysisParams;
 
@@ -79,15 +79,20 @@ pub fn write_hydraulic_report_pdf(
         let Some(pipe) = net.pipes.iter().find(|p| p.id == pr.id) else {
             continue;
         };
-        let cap = full_flow_capacity(pipe.n, pr.slope, pipe.diameter, K_MANNING_US);
+        let cap = pr.capacity;
         let ratio = if cap > 0.0 { pr.design_q / cap } else { 0.0 };
+        let slope = if pr.slope <= 0.0 && pr.manning_slope > 0.0 {
+            pr.manning_slope
+        } else {
+            pr.slope
+        };
         let row = format!(
             "{:<12}  {:>6.2}  {:>5.3}  {:>6.0}  {:>5.4}  {:>6.1}  {:>6.1}  {:>4.2}",
             trim(&pipe.id, 12),
             pipe.diameter,
             pipe.n,
             pipe.length,
-            pr.slope,
+            slope,
             pr.design_q,
             cap,
             ratio,

@@ -17,7 +17,7 @@ fn parse_num(s: &str) -> Option<f64> {
 }
 
 fn parse_handle(s: &str) -> Option<Handle> {
-    Some(Handle::new(s.trim().parse::<u64>().ok()?))
+    data::parse_entity_handle(s)
 }
 
 fn find_entity_mut<'a>(
