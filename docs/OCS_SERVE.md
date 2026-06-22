@@ -24,6 +24,8 @@ create a pipe with the **default** diameter (1.50 ft) and **ignore** `1.25` and 
 
 Reference: [OpenCADStudio `automation.rs` `run_headless`](https://github.com/HakanSeven12/OpenCADStudio/blob/main/src/app/automation.rs) (lines ~380–410).
 
+Upstream issue: [OpenCADStudio #162](https://github.com/HakanSeven12/OpenCADStudio/issues/162).
+
 ## Recommended OCS fix
 
 Before splitting for interactive point-feeding, try dispatching the **full command line** when the first-token dispatch did not start an interactive tool, or when the command prefix is registered as a plugin inline command:
