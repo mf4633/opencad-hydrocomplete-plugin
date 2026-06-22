@@ -13,8 +13,11 @@ if (-not (Test-Path ($Dwg -replace '/', '\'))) { throw "DWG not found: $Dwg" }
 
 Write-Host "Building release plugin..."
 Push-Location $Root
-cargo build --release -p opencad-hydrocomplete-plugin | Out-Host
-if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
+$ErrorActionPreference = 'Continue'
+cargo build --release -p opencad-hydrocomplete-plugin 2>&1 | Out-Host
+$buildExit = $LASTEXITCODE
+$ErrorActionPreference = 'Stop'
+if ($buildExit -ne 0) { throw "cargo build failed" }
 Pop-Location
 Copy-Item -Force (Join-Path $Root "target\release\opencad_hydrocomplete_plugin.dll") `
     (Join-Path $PluginDir "opencad.hydrocomplete-windows-x86_64.dll")
