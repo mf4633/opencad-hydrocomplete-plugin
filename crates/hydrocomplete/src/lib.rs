@@ -27,6 +27,8 @@ pub mod network_diagram;
 pub mod rational;
 pub mod report_html;
 pub mod sediment;
+pub mod soil_database;
+pub mod ssurgo;
 pub mod state_compliance;
 pub mod trace;
 pub mod water_quality;

@@ -9,6 +9,7 @@ use ocs_plugin_api::host::{CommandStep, InteractiveCommand};
 
 use stormsewer::network::NodeKind;
 
+use super::background;
 use super::data::{self, pipe_xdata, structure_xdata};
 
 const DEFAULT_INVERT: f64 = 100.0;
@@ -166,6 +167,90 @@ impl InteractiveCommand for PlacePipeInteractive {
             }
         }
     }
+}
+
+enum BackgroundStep {
+    PickInsert,
+    PickWidth,
+}
+
+/// Pick insertion point and width for a background raster image.
+pub struct AttachBackgroundInteractive {
+    image_path: String,
+    pixel_w: f64,
+    pixel_h: f64,
+    step: BackgroundStep,
+    origin: Option<[f64; 3]>,
+    default_width: f64,
+}
+
+impl AttachBackgroundInteractive {
+    pub fn new(image_path: String) -> Result<Self, String> {
+        let (px_w, px_h) = background::image_pixel_size(std::path::Path::new(&image_path))?;
+        Ok(Self {
+            image_path,
+            pixel_w: px_w,
+            pixel_h: px_h,
+            step: BackgroundStep::PickInsert,
+            origin: None,
+            default_width: 1000.0,
+        })
+    }
+}
+
+impl InteractiveCommand for AttachBackgroundInteractive {
+    fn prompt(&self) -> String {
+        match self.step {
+            BackgroundStep::PickInsert => format!(
+                "Background: click lower-left insertion point for {}",
+                short_name(&self.image_path)
+            ),
+            BackgroundStep::PickWidth => format!(
+                "Background: click width point (default {:.0} ft) — aspect {:.2}:1:",
+                self.default_width,
+                self.pixel_w / self.pixel_h.max(1.0)
+            ),
+        }
+    }
+
+    fn on_point(&mut self, pt: [f64; 3]) -> CommandStep {
+        match self.step {
+            BackgroundStep::PickInsert => {
+                self.origin = Some(pt);
+                self.step = BackgroundStep::PickWidth;
+                CommandStep::NeedPoint
+            }
+            BackgroundStep::PickWidth => {
+                let origin = self.origin.unwrap_or(pt);
+                let width = (pt[0] - origin[0]).abs().max(1.0);
+                match background::attach_image(&self.image_path, origin, width) {
+                    Ok(ent) => CommandStep::CommitAndEnd(ent),
+                    Err(e) => {
+                        let _ = e;
+                        CommandStep::Cancel
+                    }
+                }
+            }
+        }
+    }
+
+    fn on_enter(&mut self) -> CommandStep {
+        if let Some(origin) = self.origin {
+            match background::attach_image(&self.image_path, origin, self.default_width) {
+                Ok(ent) => CommandStep::CommitAndEnd(ent),
+                Err(_) => CommandStep::Cancel,
+            }
+        } else {
+            CommandStep::Cancel
+        }
+    }
+}
+
+fn short_name(path: &str) -> &str {
+    std::path::Path::new(path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or(path)
 }
 
 #[cfg(test)]

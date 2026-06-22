@@ -4,6 +4,24 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.0] - 2026-06-22
+
+### Added
+
+- `HC_NETWORK_EDIT` — per-drawing pipe Q and Manning n overrides (JSON in `%APPDATA%/HydroComplete/overrides/`); applied in `HC_ANALYZE` / `HC_REVIEW`
+- `HC_BACKGROUND` — attach georeferenced raster on layer `HC-BACKGROUND` (interactive or `HC_BACKGROUND <path> <x> <y> <width>`)
+- `HC_SOIL` — embedded soil table (50+ map units) + live SSURGO via USDA SDA with cache and regional fallback; BMP suitability screening
+- Engine: `hydrocomplete::soil_database`, `hydrocomplete::ssurgo` (6 new tests)
+
+### Changed
+
+- 128 workspace tests (hydrocomplete 50, plugin 29, stormsewer 48)
+
+### Planned (stubs remain)
+
+- NOAA Atlas 14 live PFDS fetch
+- Pro licensing (`HC_ACTIVATE`, `HC_REPORT_PDF`)
+
 ## [0.2.0] - 2026-06-22
 
 ### Added
@@ -35,12 +53,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `HC_PIPES` / `HC_CAPACITY` — circular, box, and arch Manning via `hydrocomplete::manning`
 - Ribbon groups aligned with HydroComplete.Civil3D 1.4
 
-### Planned (stubs remain)
-
-- `HC_NETWORK_EDIT`, `HC_BACKGROUND`, `HC_SOIL` (SSURGO live fetch)
-- NOAA Atlas 14 live PFDS fetch
-- Pro licensing (`HC_ACTIVATE`)
-
 ## [0.1.0] - 2026-06-09
 
 ### Added
@@ -51,5 +63,6 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `stormsewer` engine crate — Rational, Manning, HGL, IDF, LandXML, design review
 - GPL-3.0-only license
 
+[0.3.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/releases/tag/v0.1.0

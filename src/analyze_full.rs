@@ -9,6 +9,7 @@ use stormsewer::params::StormAnalysisParams;
 
 use crate::analysis;
 use crate::data::{self, DrawnNetwork};
+use crate::network_override;
 
 const DEFAULT_STATE: &str = "NC";
 
@@ -21,6 +22,7 @@ pub fn run_full_analysis<'a>(
     params: &StormAnalysisParams,
     state_code: &str,
     development_type: &str,
+    drawing_key: Option<&str>,
 ) -> Result<NetworkAnalysisResult, String> {
     let ents: Vec<_> = entities.collect();
     let catchment_infos = data::catchments_from_entities(ents.iter().copied());
@@ -46,8 +48,12 @@ pub fn run_full_analysis<'a>(
         })
         .collect();
 
-    let (pipes, structure_names, storm_network, storm_analysis) =
+    let (mut pipes, structure_names, storm_network, storm_analysis) =
         build_pipes_and_storm_analysis(ents.iter().copied(), params)?;
+    if let Some(key) = drawing_key {
+        let overrides = network_override::load(key);
+        network_override::apply_to_pipes(&mut pipes, &overrides);
+    }
 
     let input = NetworkAnalysisInput {
         catchments,
@@ -218,7 +224,7 @@ mod tests {
     fn full_analysis_runs_with_catchment_and_network() {
         let ents = minimal_drawing();
         let params = StormAnalysisParams::municipal();
-        let result = run_full_analysis(ents.iter(), &params, "NC", "residential").expect("runs");
+        let result = run_full_analysis(ents.iter(), &params, "NC", "residential", None).expect("runs");
         assert!(!result.hydrology.is_empty());
         assert!(result.compliance.is_some());
     }

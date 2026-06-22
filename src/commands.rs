@@ -1184,6 +1184,107 @@ pub fn wetland_lines<'a>(entities: impl Iterator<Item = &'a EntityType>) -> Resu
     Ok(lines)
 }
 
+use hydrocomplete::soil_database::BmpSuitability;
+
+pub fn soil_lines(args: &str) -> Result<Vec<String>, String> {
+    use hydrocomplete::soil_database;
+    use hydrocomplete::ssurgo::{SsugroFetcher, SsugroResolution, SsugroSource};
+
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    let (resolution, live) = if tokens.first().map(|t| t.eq_ignore_ascii_case("LIVE")).unwrap_or(false) {
+        let lat: f64 = tokens
+            .get(1)
+            .ok_or("HC_SOIL LIVE <lat> <lon> [BMP Bioretention]")?
+            .parse()
+            .map_err(|_| "Invalid latitude")?;
+        let lon: f64 = tokens
+            .get(2)
+            .ok_or("HC_SOIL LIVE <lat> <lon> [BMP Bioretention]")?
+            .parse()
+            .map_err(|_| "Invalid longitude")?;
+        let fetcher = SsugroFetcher::new(Some(hydrocomplete::ssurgo::default_cache_directory()));
+        let res = fetcher.resolve(lat, lon);
+        (res, true)
+    } else if tokens.first().map(|t| t.eq_ignore_ascii_case("NAME")).unwrap_or(false) {
+        let name = tokens.get(1).ok_or("HC_SOIL NAME <soil series> [BMP Bioretention]")?;
+        let res = SsugroResolution::embedded(name, 0.0, 0.0)?;
+        (res, false)
+    } else if tokens.is_empty() {
+        let res = SsugroResolution::embedded("cecil-sandy-loam", 35.23, -80.84)?;
+        (res, false)
+    } else {
+        let name = tokens[0];
+        let res = SsugroResolution::embedded(name, 0.0, 0.0)?;
+        (res, false)
+    };
+
+    let bmp_type = parse_soil_bmp_arg(&tokens);
+    let soil = resolution.to_soil_properties();
+    let suggestion = soil_database::suggest_bmp(&soil, &bmp_type);
+
+    let mut lines = vec!["--- HydroComplete: soil lookup ---".into()];
+    if live || resolution.source != SsugroSource::Embedded {
+        let fallback = if resolution.map_unit.is_fallback { " (fallback)" } else { "" };
+        lines.push(format!(
+            "  Source: {}{fallback}",
+            resolution.source.as_str()
+        ));
+        if let Some(w) = &resolution.map_unit.warning {
+            lines.push(format!("  Warning: {w}"));
+        }
+        if let Some(hz) = &resolution.map_unit.surface_horizon {
+            if let (Some(s), Some(si), Some(c)) = (hz.pct_sand, hz.pct_silt, hz.pct_clay) {
+                lines.push(format!("  PSD: sand {s:.1}%  silt {si:.1}%  clay {c:.1}%"));
+            }
+        }
+    }
+    lines.push(format!("  {} ({})", soil.name, soil.key));
+    lines.push(format!("  Region: {}   Texture: {}", soil.region, soil.texture));
+    lines.push(format!(
+        "  HSG: {}   K-factor: {:.2}   fc: {:.2} in/hr",
+        soil.hydrologic_soil_group, soil.k_factor, soil.infiltration_rate_in_per_hr
+    ));
+    lines.push(format!("  Drainage: {}", soil.drainage));
+    lines.push(format!(
+        "  BMP '{}' suitability: {}",
+        suggestion.bmp_type,
+        suitability_label(suggestion.suitability)
+    ));
+    lines.push(format!("  {}", suggestion.rationale));
+    if !suggestion.alternatives.is_empty() {
+        lines.push(format!("  Alternatives: {}", suggestion.alternatives.join(", ")));
+    }
+    Ok(lines)
+}
+
+fn parse_soil_bmp_arg(tokens: &[&str]) -> String {
+    if let Some(pos) = tokens.iter().position(|t| t.eq_ignore_ascii_case("BMP")) {
+        if let Some(bmp) = tokens.get(pos + 1) {
+            return normalize_soil_bmp_keyword(bmp);
+        }
+    }
+    hydrocomplete::bmp::bmp_type::BIORETENTION.to_string()
+}
+
+fn normalize_soil_bmp_keyword(bmp: &str) -> String {
+    match bmp.to_ascii_lowercase().as_str() {
+        "wetpond" | "wet-pond" => hydrocomplete::bmp::bmp_type::WET_POND.into(),
+        "wetland" | "constructed-wetland" => "constructed-wetland".into(),
+        "bioretention" => hydrocomplete::bmp::bmp_type::BIORETENTION.into(),
+        other => other.into(),
+    }
+}
+
+fn suitability_label(s: BmpSuitability) -> &'static str {
+    match s {
+        BmpSuitability::Excellent => "Excellent",
+        BmpSuitability::Good => "Good",
+        BmpSuitability::Marginal => "Marginal",
+        BmpSuitability::Poor => "Poor",
+        BmpSuitability::NotRecommended => "NotRecommended",
+    }
+}
+
 pub fn stub_message(cmd: &str) -> String {
     format!(
         "{cmd}: planned — see HC_ABOUT for available commands."

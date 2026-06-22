@@ -13,7 +13,9 @@ use super::edit;
 use super::landxml_import;
 use super::manifest::PLUGIN_ID;
 use super::params_cmd;
-use super::interactive::{PlacePipeInteractive, PlaceStructureInteractive};
+use super::background;
+use super::interactive::{AttachBackgroundInteractive, PlacePipeInteractive, PlaceStructureInteractive};
+use super::network_edit;
 use super::placement;
 use super::report_export;
 use super::sizing;
@@ -40,6 +42,10 @@ fn command_arg(cmd: &str) -> Option<&str> {
     let mut parts = cmd.splitn(2, char::is_whitespace);
     parts.next()?;
     parts.next().map(str::trim).filter(|s| !s.is_empty())
+}
+
+fn drawing_key(host: &dyn HostApi) -> String {
+    format!("tab-{}", host.tab_index())
 }
 
 fn run_validation(host: &mut dyn HostApi, block_on_error: bool) -> bool {
@@ -85,7 +91,10 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             let params = tab_params(host);
             let state = crate::analyze_full::default_state_code();
             if crate::analyze_full::has_catchments(entities(host)) {
-                match crate::analyze_full::run_full_analysis(entities(host), &params, state, "residential") {
+                let dk = drawing_key(host);
+                match crate::analyze_full::run_full_analysis(
+                    entities(host), &params, state, "residential", Some(&dk),
+                ) {
                     Ok(full) => {
                         let idf = format!(
                             "RP {}yr  a={:.1} b={:.1} c={:.2}",
@@ -467,7 +476,10 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             let state = hydrocomplete::state_compliance::get(state_code);
             let dev_type = "residential";
             if crate::analyze_full::has_catchments(entities(host)) {
-                match crate::analyze_full::run_full_analysis(entities(host), &params, state_code, dev_type) {
+                let dk = drawing_key(host);
+                match crate::analyze_full::run_full_analysis(
+                    entities(host), &params, state_code, dev_type, Some(&dk),
+                ) {
                     Ok(full) => {
                         if let Some(comp) = &full.compliance {
                             match commands::review_summary_lines(
@@ -614,10 +626,44 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             commands::emit_lines(host, lines);
             true
         }
-        cmd if matches!(cmd, "HC_NETWORK_EDIT" | "HC_BACKGROUND" | "HC_SOIL")
-            || cmd.starts_with("HC_NETWORK_EDIT ")
-        => {
-            host.push_info(&commands::stub_message(cmd.split_whitespace().next().unwrap_or(cmd)));
+        cmd if cmd == "HC_NETWORK_EDIT" || cmd.starts_with("HC_NETWORK_EDIT ") => {
+            let args = command_arg(cmd).unwrap_or("");
+            let drawing = drawing_key(host);
+            let ents: Vec<_> = host.document().entities().collect();
+            let lines = network_edit::run(&drawing, ents.iter().copied(), args);
+            commands::emit_lines(host, lines);
+            true
+        }
+        cmd if cmd == "HC_SOIL" || cmd.starts_with("HC_SOIL ") => {
+            let args = command_arg(cmd).unwrap_or("");
+            commands::emit_lines(host, commands::soil_lines(args));
+            true
+        }
+        "HC_BACKGROUND" => {
+            host.push_info(background::usage());
+            true
+        }
+        cmd if cmd.starts_with("HC_BACKGROUND ") => {
+            let rest = command_arg(cmd).unwrap_or("");
+            let parts: Vec<&str> = rest.split_whitespace().collect();
+            if parts.len() >= 4 {
+                let path = parts[0];
+                let x: f64 = parts[1].parse().unwrap_or(0.0);
+                let y: f64 = parts[2].parse().unwrap_or(0.0);
+                let w: f64 = parts[3].parse().unwrap_or(1000.0);
+                match background::attach_direct(host, path, x, y, w) {
+                    Ok(msg) => host.push_output(&msg),
+                    Err(e) => host.push_error(&e),
+                }
+            } else if parts.is_empty() {
+                host.push_error(background::usage());
+            } else {
+                let path = rest.trim();
+                match AttachBackgroundInteractive::new(path.to_string()) {
+                    Ok(interactive) => host.start_interactive(Box::new(interactive)),
+                    Err(e) => host.push_error(&e),
+                }
+            }
             true
         }
         "HC_INLET" => {

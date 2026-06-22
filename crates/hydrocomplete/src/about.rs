@@ -1,7 +1,7 @@
 //! `HC_ABOUT` command text — mirrors HydroComplete.Civil3D 1.4.0 listing.
 
 pub const ABOUT_LINES: &[&str] = &[
-    "=== HydroComplete for Open CAD Studio 0.2.0 ===",
+    "=== HydroComplete for Open CAD Studio 0.3.0 ===",
     "  HC_NETWORK       Per-network summary (pipes, length, inverts, diameters, structures)",
     "  HC_PIPES         Manning capacity of every pipe (circular, box, arch)",
     "  HC_PIPES_WRITE   Label Qfull/Vfull on layer HC-CAPACITY",

@@ -8,11 +8,14 @@
 
 mod analysis;
 mod analyze_full;
+mod background;
 mod commands;
 mod data;
 mod dispatch;
 mod edit;
 mod interactive;
+mod network_edit;
+mod network_override;
 #[cfg(test)]
 mod integration_tests;
 mod landxml_import;
@@ -37,7 +40,7 @@ pub mod manifest {
     pub static MANIFEST: PluginManifest = PluginManifest {
         id: PLUGIN_ID,
         name: "HydroComplete",
-        version: "0.2.0",
+        version: "0.3.0",
         description: "Stormwater hydrology and hydraulics — mirrors HydroComplete.Civil3D",
         api_version: ApiVersion::CURRENT,
         ribbon_order: 45,
