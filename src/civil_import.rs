@@ -22,6 +22,8 @@ const DEFAULT_DIAMETER_FT: f64 = 1.25; // 15 in
 const DEFAULT_N: f64 = 0.013;
 const DEFAULT_MATCH_FT: f64 = 120.0;
 const DEFAULT_PIPE_SLOPE: f64 = 0.01;
+const STRUCT_LABEL_MATCH_FT: f64 = 75.0;
+const PIPE_LABEL_MATCH_FT: f64 = 35.0;
 
 pub fn usage() -> &'static str {
     "HC_CIVIL_IMPORT [layer] [force] [d15] [n13]  — Civil 3D I-SEWER-NETWORK blocks+lines → HC network"
@@ -56,6 +58,29 @@ struct CivilStructure {
     kind: NodeKind,
     invert: f64,
     rim: f64,
+    invert_from_label: bool,
+    rim_from_label: bool,
+}
+
+#[derive(Clone, Debug, Default)]
+struct PipeLabel {
+    length_ft: Option<f64>,
+    diameter_in: Option<u32>,
+    slope_pct: Option<f64>,
+}
+
+impl PipeLabel {
+    fn merge(&mut self, other: &PipeLabel) {
+        if let Some(d) = other.diameter_in {
+            self.diameter_in = Some(self.diameter_in.map(|x| x.max(d)).unwrap_or(d));
+        }
+        if self.slope_pct.is_none() {
+            self.slope_pct = other.slope_pct;
+        }
+        if self.length_ft.is_none() {
+            self.length_ft = other.length_ft;
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -99,6 +124,32 @@ pub fn parse_config(args: &str) -> CivilImportConfig {
     cfg
 }
 
+/// Classify structure kind from a Civil plan label (e.g. `4 CB-3`, `2 UG DET OUT`).
+pub fn kind_from_label_name(name: &str) -> NodeKind {
+    let u = name.to_ascii_uppercase();
+    if u.contains("OUTFALL")
+        || u.contains("OUTLET")
+        || u.contains(" DET OUT")
+        || u.contains("EX MH")
+        || u.contains("EX MSD")
+        || u.contains("MSD")
+        || u.contains("TAIL")
+        || u.ends_with(" OUT")
+    {
+        return NodeKind::Outfall;
+    }
+    if u.contains("CB")
+        || u.contains("HW")
+        || u.contains("INLET")
+        || u.contains("CURB")
+        || u.contains("GRATE")
+        || u.contains("CATCH")
+    {
+        return NodeKind::Inlet;
+    }
+    NodeKind::Junction
+}
+
 /// Classify structure kind from a Civil 3D block name (e.g. SPT65, CB-12).
 pub fn kind_from_block_name(name: &str) -> NodeKind {
     let u = name.to_ascii_uppercase();
@@ -121,6 +172,85 @@ pub fn kind_from_block_name(name: &str) -> NodeKind {
         return NodeKind::Inlet;
     }
     NodeKind::Junction
+}
+
+fn parse_inv_value(line: &str) -> Option<f64> {
+    let after = line.split('=').nth(1)?;
+    let num: String = after
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-')
+        .collect();
+    parse_num(&num)
+}
+
+/// Parse a structure MText label (`SAN MH 1`, `RIM=`, `INV.IN=`, `INV.OUT=`).
+pub fn parse_structure_label_text(text: &str) -> Option<(String, Option<f64>, Option<f64>)> {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let name = lines[0].to_string();
+    let mut rim = None;
+    let mut inv_out = None;
+    let mut inv_in = None;
+    for line in &lines[1..] {
+        let upper = line.to_ascii_uppercase();
+        if upper.contains("RIM=") || upper.starts_with("RIM") && upper.contains('=') {
+            rim = parse_inv_value(line).or(rim);
+        } else if upper.contains("INV.OUT") {
+            if let Some(v) = parse_inv_value(line) {
+                inv_out = Some(inv_out.map(|o: f64| o.min(v)).unwrap_or(v));
+            }
+        } else if upper.contains("INV.IN") || upper.contains("INV.IN=") {
+            if let Some(v) = parse_inv_value(line) {
+                inv_in = Some(inv_in.map(|o: f64| o.min(v)).unwrap_or(v));
+            }
+        }
+    }
+    let invert = inv_out.or(inv_in);
+    Some((name, rim, invert))
+}
+
+/// Parse a pipe Text label (`112' ~8" 0.50%`, `22' ~15"`, `1.00%`).
+pub fn parse_pipe_label_text(text: &str) -> PipeLabel {
+    let mut label = PipeLabel::default();
+    let t = text.trim();
+    if let Some(idx) = t.find('~') {
+        let rest = &t[idx + 1..];
+        let inches: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+        if let Ok(n) = inches.parse::<u32>() {
+            label.diameter_in = Some(n);
+        }
+    }
+    if let Some(pos) = t.find('\'') {
+        let before = &t[..pos];
+        let ft: String = before
+            .chars()
+            .rev()
+            .take_while(|c| c.is_ascii_digit() || *c == '.')
+            .collect::<String>()
+            .chars()
+            .rev()
+            .collect();
+        if let Ok(n) = ft.parse::<f64>() {
+            label.length_ft = Some(n);
+        }
+    }
+    for part in t.split_whitespace() {
+        if let Some(num) = part.strip_suffix('%') {
+            if let Ok(v) = num.parse::<f64>() {
+                label.slope_pct = Some(v);
+            }
+        }
+    }
+    label
 }
 
 fn parse_elevation_token(tag: &str, value: &str) -> Option<(bool, f64)> {
@@ -339,6 +469,122 @@ fn existing_hc_network<'a>(entities: impl IntoIterator<Item = &'a EntityType>) -
         .any(|e| data::is_structure_entity(e))
 }
 
+fn entity_xy(e: &EntityType) -> Option<(f64, f64)> {
+    match e {
+        EntityType::Text(t) => Some((t.insertion_point.x, t.insertion_point.y)),
+        EntityType::MText(mt) => Some((mt.insertion_point.x, mt.insertion_point.y)),
+        _ => None,
+    }
+}
+
+fn collect_layer_annotations<'a>(
+    entities: impl Iterator<Item = &'a EntityType>,
+    layer: &str,
+) -> (
+    Vec<(f64, f64, String, Option<f64>, Option<f64>)>,
+    Vec<(f64, f64, PipeLabel)>,
+) {
+    let mut structs = Vec::new();
+    let mut pipes = Vec::new();
+    for e in entities {
+        if e.common().layer != layer {
+            continue;
+        }
+        let Some((x, y)) = entity_xy(e) else {
+            continue;
+        };
+        match e {
+            EntityType::MText(mt) => {
+                if let Some((name, rim, inv)) = parse_structure_label_text(&mt.value) {
+                    structs.push((x, y, name, rim, inv));
+                }
+            }
+            EntityType::Text(t) => {
+                let label = parse_pipe_label_text(&t.value);
+                if label.diameter_in.is_some() || label.slope_pct.is_some() || label.length_ft.is_some()
+                {
+                    pipes.push((x, y, label));
+                }
+            }
+            _ => {}
+        }
+    }
+    (structs, pipes)
+}
+
+fn nearest_structure_label<'a>(
+    x: f64,
+    y: f64,
+    labels: &'a [(f64, f64, String, Option<f64>, Option<f64>)],
+    tol_ft: f64,
+) -> Option<&'a (f64, f64, String, Option<f64>, Option<f64>)> {
+    let tol2 = tol_ft * tol_ft;
+    labels
+        .iter()
+        .filter_map(|l| {
+            let d2 = dist2(x, y, l.0, l.1);
+            if d2 <= tol2 {
+                Some((l, d2))
+            } else {
+                None
+            }
+        })
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(l, _)| l)
+}
+
+fn apply_structure_labels(
+    structs: &mut [CivilStructure],
+    labels: &[(f64, f64, String, Option<f64>, Option<f64>)],
+    tol_ft: f64,
+) -> usize {
+    let mut matched = 0usize;
+    for s in structs.iter_mut() {
+        let Some((_, _, name, rim, inv)) = nearest_structure_label(s.x, s.y, labels, tol_ft) else {
+            continue;
+        };
+        matched += 1;
+        s.block_name = name.clone();
+        s.kind = kind_from_label_name(name);
+        if let Some(r) = *rim {
+            s.rim = r.max(s.invert + 0.5);
+            s.rim_from_label = true;
+        }
+        if let Some(i) = *inv {
+            s.invert = i;
+            s.invert_from_label = true;
+            if !s.rim_from_label {
+                s.rim = s.rim.max(i + 0.5);
+            }
+        }
+    }
+    matched
+}
+
+fn pipe_label_near_line(
+    pipe: &CivilPipeLine,
+    labels: &[(f64, f64, PipeLabel)],
+    tol_ft: f64,
+) -> PipeLabel {
+    let mx = (pipe.x0 + pipe.x1) * 0.5;
+    let my = (pipe.y0 + pipe.y1) * 0.5;
+    let mut merged = PipeLabel::default();
+    let mut found = false;
+    for (tx, ty, label) in labels {
+        let d_line = dist_point_to_segment(*tx, *ty, pipe.x0, pipe.y0, pipe.x1, pipe.y1);
+        let d_mid = dist2(*tx, *ty, mx, my).sqrt();
+        if d_line <= tol_ft || d_mid <= tol_ft {
+            merged.merge(label);
+            found = true;
+        }
+    }
+    if found {
+        merged
+    } else {
+        PipeLabel::default()
+    }
+}
+
 fn collect_civil_geometry<'a>(
     entities: impl Iterator<Item = &'a EntityType>,
     layer: &str,
@@ -364,6 +610,8 @@ fn collect_civil_geometry<'a>(
                     kind,
                     invert,
                     rim,
+                    invert_from_label: inv_attr.is_some(),
+                    rim_from_label: rim_attr.is_some(),
                 });
             }
             EntityType::Line(line) => {
@@ -427,10 +675,21 @@ fn refine_outfall_kind(structs: &mut [CivilStructure], pipe_pairs: &[(usize, usi
     }
 }
 
-fn apply_downstream_inverts(handles: &[Handle], pipe_pairs: &[(usize, usize)], host: &mut dyn HostApi) {
+fn apply_downstream_inverts(
+    handles: &[Handle],
+    pipe_pairs: &[(usize, usize)],
+    structs: &[CivilStructure],
+    host: &mut dyn HostApi,
+) {
     let n = handles.len();
     for &(from, to) in pipe_pairs {
         if from >= n || to >= n || from == to {
+            continue;
+        }
+        if from < structs.len()
+            && to < structs.len()
+            && structs[to].invert_from_label
+        {
             continue;
         }
         let from_h = handles[from];
@@ -505,8 +764,11 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         );
     }
 
+    let entities: Vec<_> = host.document().entities().collect();
     let (civil_structs, civil_pipes) =
-        collect_civil_geometry(host.document().entities(), &cfg.layer);
+        collect_civil_geometry(entities.iter().copied(), &cfg.layer);
+    let (struct_labels, pipe_labels) =
+        collect_layer_annotations(entities.iter().copied(), &cfg.layer);
 
     if civil_structs.is_empty() {
         return Err(format!(
@@ -541,6 +803,8 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
     }
 
     let mut structs = civil_structs;
+    let struct_labels_matched =
+        apply_structure_labels(&mut structs, &struct_labels, STRUCT_LABEL_MATCH_FT);
     refine_outfall_kind(&mut structs, &pipe_pairs);
 
     host.push_undo("HC_CIVIL_IMPORT");
@@ -572,13 +836,18 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         let EntityType::Line(_) = ent else {
             continue;
         };
+        let spec = pipe_label_near_line(pipe, &pipe_labels, PIPE_LABEL_MATCH_FT);
+        let dia_ft = spec
+            .diameter_in
+            .map(|inches| inches as f64 / 12.0)
+            .unwrap_or(cfg.diameter_ft);
         ent.common_mut()
             .extended_data
-            .add_record(pipe_xdata(cfg.diameter_ft, cfg.n, from_h, to_h));
+            .add_record(pipe_xdata(dia_ft, cfg.n, from_h, to_h));
         tagged += 1;
     }
 
-    apply_downstream_inverts(&handles, &pipe_pairs, host);
+    apply_downstream_inverts(&handles, &pipe_pairs, &structs, host);
 
     host.bump_geometry();
     host.set_dirty();
@@ -595,13 +864,26 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         .map(|n| n.pipes.len())
         .unwrap_or(0);
 
+    let labeled_pipes = civil_pipes
+        .iter()
+        .filter(|p| {
+            pipe_label_near_line(p, &pipe_labels, PIPE_LABEL_MATCH_FT)
+                .diameter_in
+                .is_some()
+        })
+        .count();
+
     let msg = format!(
-        "Civil import from \"{}\": {} structure(s) ({} inlet, {} outfall), {} line(s) XDATA-tagged ({} matched, {} skipped), {} pipe(s) in network, default dia={:.2} ft n={:.3}.",
+        "Civil import from \"{}\": {} structure(s) ({} inlet, {} outfall), {} MText + {} pipe Text label(s) ({} structures matched), {} line(s) XDATA-tagged ({} w/ dia label, {} matched, {} skipped), {} pipe(s) in network, default dia={:.2} ft n={:.3}.",
         cfg.layer,
         structs.len(),
         inlets,
         outfalls,
+        struct_labels.len(),
+        pipe_labels.len(),
+        struct_labels_matched,
         tagged_verify,
+        labeled_pipes,
         pipe_pairs.len(),
         skipped_pipes,
         net_pipes,
@@ -627,6 +909,33 @@ mod tests {
         assert_eq!(kind_from_block_name("SPT65"), NodeKind::Junction);
         assert_eq!(kind_from_block_name("OUTFALL-1"), NodeKind::Outfall);
         assert_eq!(kind_from_block_name("CB-12"), NodeKind::Inlet);
+    }
+
+    #[test]
+    fn kind_from_label_classifies_cb_and_outfall() {
+        assert_eq!(kind_from_label_name("4 CB-3"), NodeKind::Inlet);
+        assert_eq!(kind_from_label_name("2 UG DET OUT"), NodeKind::Outfall);
+        assert_eq!(kind_from_label_name("SAN MH 1"), NodeKind::Junction);
+    }
+
+    #[test]
+    fn parse_structure_mtext_24145_sample() {
+        let text = "SAN MH 1\nRIM=2217.83\nINV.IN=2213.10(SAN MH 2)\nINV.OUT=2212.90";
+        let (name, rim, inv) = parse_structure_label_text(text).unwrap();
+        assert_eq!(name, "SAN MH 1");
+        assert!((rim.unwrap() - 2217.83).abs() < 1e-6);
+        assert!((inv.unwrap() - 2212.90).abs() < 1e-6);
+    }
+
+    #[test]
+    fn parse_pipe_text_24145_diameter_and_slope() {
+        let eight = parse_pipe_label_text("112' ~8\" 0.50%");
+        assert_eq!(eight.diameter_in, Some(8));
+        assert!((eight.slope_pct.unwrap() - 0.50).abs() < 1e-6);
+        assert!((eight.length_ft.unwrap() - 112.0).abs() < 1e-6);
+        let fifteen = parse_pipe_label_text("43' ~15\" 5.00%");
+        assert_eq!(fifteen.diameter_in, Some(15));
+        assert!((fifteen.slope_pct.unwrap() - 5.0).abs() < 1e-6);
     }
 
     #[test]
@@ -679,6 +988,8 @@ mod tests {
             kind: NodeKind::Junction,
             invert: 100.0,
             rim: 106.0,
+            invert_from_label: false,
+            rim_from_label: false,
         })
         .collect();
 
@@ -734,6 +1045,8 @@ mod tests {
                 kind: NodeKind::Junction,
                 invert: 100.0,
                 rim: 106.0,
+                invert_from_label: false,
+                rim_from_label: false,
             },
             CivilStructure {
                 block_name: "SPT65".into(),
@@ -742,6 +1055,8 @@ mod tests {
                 kind: NodeKind::Junction,
                 invert: 99.0,
                 rim: 105.0,
+                invert_from_label: false,
+                rim_from_label: false,
             },
         ];
         let pipe = CivilPipeLine {

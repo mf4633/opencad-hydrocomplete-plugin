@@ -4,6 +4,18 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.5] - 2026-06-22
+
+### Added
+
+- **Civil label import** — `HC_CIVIL_IMPORT` reads structure **MText** (`RIM=`, `INV.IN=`, `INV.OUT=`) and pipe **Text** (`~8"`, `~15"`, slope %) on the sewer layer; matches labels to nearest block/line; per-pipe diameter from plan labels
+- `scripts/extract_24145_hydrology.py` + `scripts/run_24145_full_workflow.ps1` — 24-145 worksheet → `HC_EDIT` batch + analyze/report
+
+### Changed
+
+- Structure kind detection uses Civil plan labels (`CB-3`, `UG DET OUT`, `EX MH`) when MText is present
+- Downstream invert stepping skipped when structure invert came from a label
+
 ## [0.4.4] - 2026-06-22
 
 ### Added

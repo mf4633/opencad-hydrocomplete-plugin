@@ -1,7 +1,7 @@
 # Install HydroComplete via OCS marketplace flow (registry + GitHub Release).
 param(
     [string]$Repo = "mf4633/opencad-hydrocomplete-plugin",
-    [string]$Tag = "v0.4.3"
+    [string]$Tag = "v0.4.5"
 )
 $ErrorActionPreference = "Stop"
 
