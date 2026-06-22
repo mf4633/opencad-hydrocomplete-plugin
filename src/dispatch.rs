@@ -10,6 +10,7 @@ use stormsewer::network::NodeKind;
 use super::analysis;
 use super::commands;
 use super::edit;
+use super::civil_import;
 use super::landxml_import;
 use super::manifest::PLUGIN_ID;
 use super::params_cmd;
@@ -483,6 +484,18 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                     Err(e) => host.push_error(&e),
                 },
                 Err(e) => host.push_error(&format!("cannot read {path}: {e}")),
+            }
+            true
+        }
+        "HC_CIVIL_IMPORT" => {
+            host.push_info(civil_import::usage());
+            true
+        }
+        cmd if cmd.starts_with("HC_CIVIL_IMPORT ") => {
+            let args = cmd.trim_start_matches("HC_CIVIL_IMPORT").trim();
+            match civil_import::import_civil_sewer(host, args) {
+                Ok(msg) => host.push_info(&msg),
+                Err(e) => host.push_error(&e),
             }
             true
         }

@@ -4,6 +4,13 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.3] - 2026-06-22
+
+### Added
+
+- `HC_CIVIL_IMPORT` — bridge Civil 3D `I-SEWER-NETWORK` structure blocks (e.g. SPT65) and pipe lines into HC XDATA; segment-proximity matching (120 ft); auto inlet/outfall from topology; optional `force`, `d##`, `n##` args
+- Ribbon **Import Civil** tool; 155 workspace tests
+
 ## [0.4.2] - 2026-06-22
 
 ### Added

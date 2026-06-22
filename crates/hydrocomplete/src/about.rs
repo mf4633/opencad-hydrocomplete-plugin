@@ -1,7 +1,7 @@
 //! `HC_ABOUT` command text — mirrors HydroComplete.Civil3D 1.4.0 listing.
 
 pub const ABOUT_LINES: &[&str] = &[
-    "=== HydroComplete for Open CAD Studio 0.4.2 ===",
+    "=== HydroComplete for Open CAD Studio 0.4.3 ===",
     "  HC_NETWORK       Per-network summary (pipes, length, inverts, diameters, structures)",
     "  HC_PIPES         Manning capacity of every pipe (circular, box, arch)",
     "  HC_PIPES_WRITE   Label Qfull/Vfull on layer HC-CAPACITY",
@@ -44,6 +44,7 @@ pub const ABOUT_LINES: &[&str] = &[
     "  HC_SOIL          Live SSURGO soil lookup + BMP suitability",
     "  HC_LANDXML       Export pipe network to LandXML 1.2",
     "  HC_LANDXML_IMPORT Import LandXML 1.2 and compare to drawing",
+    "  HC_CIVIL_IMPORT   Bridge Civil 3D I-SEWER-NETWORK blocks+lines to HC XDATA",
     "  HC_ATLAS14       List Atlas 14 IDF presets + live PFDS fetch info",
     "  HC_ACTIVATE      Activate Pro with email + beta token (hc_live_*)",
     "  HC_LICENSE       Show Free/Pro license status and activation info",
