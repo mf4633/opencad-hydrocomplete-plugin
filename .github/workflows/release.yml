@@ -1,0 +1,40 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            ext: so
+            asset: opencad.hydrocomplete-linux-x86_64.so
+          - os: windows-latest
+            ext: dll
+            asset: opencad.hydrocomplete-windows-x86_64.dll
+          - os: macos-latest
+            ext: dylib
+            asset: opencad.hydrocomplete-macos-aarch64.dylib
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release
+      - name: Stage release asset
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp target/release/*.${{ matrix.ext }} "dist/${{ matrix.asset }}"
+          cp plugin.toml dist/plugin.toml
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/${{ matrix.asset }}
+            dist/plugin.toml

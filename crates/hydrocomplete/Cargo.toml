@@ -1,0 +1,12 @@
+[package]
+name = "hydrocomplete"
+version = "0.1.0"
+edition = "2021"
+description = "Headless hydrology/hydraulics engine for HydroComplete (OpenCAD + Civil 3D parity)."
+license = "GPL-3.0-only"
+
+[dependencies]
+stormsewer = { path = "../stormsewer" }
+
+[lib]
+name = "hydrocomplete"

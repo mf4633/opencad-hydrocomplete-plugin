@@ -1,0 +1,18 @@
+# Sample storm-sewer network  (stormsewer-cli examples/sample.ssn)
+# A short, properly-sized trunk line: two catch basins + a junction to outfall.
+
+IDF        60 10 0.8       # i = 60 / (t+10)^0.8   (in/hr, t in minutes) ~ 5 in/hr
+TAILWATER  100.5           # outfall tailwater elevation (ft)
+MINTC      10              # minimum time of concentration (min)
+JUNCTIONK  0.5             # junction loss coefficient
+
+#    id    kind        x     y    invert  rim     area  C     tc_inlet
+NODE N1    inlet         0    0   104.0   110.0   1.0   0.70  12
+NODE N2    inlet       300    0   102.5   108.5   1.0   0.70  10
+NODE N3    junction    550    0   101.2   107.0   0.5   0.80  8
+NODE OUT   outfall     730    0   100.0   106.0
+
+#    id    from  to    length  dia   n      (dia: 15in=1.25, 18in=1.5, 21in=1.75)
+PIPE P1    N1    N2    300     1.25  0.013
+PIPE P2    N2    N3    250     1.50  0.013
+PIPE P3    N3    OUT   180     1.75  0.013

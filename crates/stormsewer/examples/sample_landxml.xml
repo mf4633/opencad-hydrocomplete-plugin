@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<LandXML xmlns="http://www.landxml.org/schema/LandXML-1.2" version="1.2" date="2026-06-09">
+  <Units>
+    <Imperial areaUnit="squareFoot" linearUnit="foot" diameterUnit="inch"/>
+  </Units>
+  <PipeNetworks>
+    <PipeNetwork name="Sample">
+      <Structs>
+        <Struct name="IN1" role="inlet">
+          <Center>0.0 0.0 110.0</Center>
+          <Invert>104.0</Invert>
+          <ElevRim>110.0</ElevRim>
+        </Struct>
+        <Struct name="J1" role="junction">
+          <Center>150.0 0.0 108.0</Center>
+          <Invert>102.0</Invert>
+          <ElevRim>108.0</ElevRim>
+        </Struct>
+        <Struct name="OUT1" role="outfall">
+          <Center>300.0 0.0 106.0</Center>
+          <Invert>100.0</Invert>
+          <ElevRim>106.0</ElevRim>
+        </Struct>
+      </Structs>
+      <Pipes>
+        <Pipe name="P1">
+          <CircPipe diameter="15"/>
+          <StartStruct>IN1</StartStruct>
+          <EndStruct>J1</EndStruct>
+        </Pipe>
+        <Pipe name="P2">
+          <CircPipe diameter="18"/>
+          <StartStruct>J1</StartStruct>
+          <EndStruct>OUT1</EndStruct>
+        </Pipe>
+      </Pipes>
+    </PipeNetwork>
+  </PipeNetworks>
+</LandXML>
