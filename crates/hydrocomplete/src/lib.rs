@@ -6,6 +6,8 @@
 //! models used by the OpenCAD plugin and future WASM/desktop targets.
 
 pub mod about;
+pub mod atlas14_fetcher;
+pub mod atlas14_presets;
 pub mod arch_conduit;
 pub mod box_conduit;
 pub mod bmp;
@@ -20,7 +22,9 @@ pub mod gradually_varied_flow;
 pub mod hydrograph_convolution;
 pub mod hydrograph_router;
 pub mod landxml_writer;
+pub mod license;
 pub mod manning;
+pub mod pdf_report;
 pub mod models;
 pub mod network_analysis;
 pub mod network_diagram;

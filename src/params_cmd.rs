@@ -106,12 +106,51 @@ pub fn apply_params(state: &mut HydroTabState, rest: &str) -> Result<String, Str
             state.params.inlet_gutter_slope = v;
             Ok(format!("Inlet gutter slope set to {v:.4} ft/ft."))
         }
+        "PRESET" => {
+            let preset_key = t
+                .get(1)
+                .ok_or("HC_PARAMS PRESET <key> [return_period]  (e.g. HC_PARAMS PRESET charlotte-nc 10)")?;
+            let rp: i32 = t.get(2).and_then(|s| s.parse().ok()).unwrap_or(10);
+            let preset = hydrocomplete::atlas14_presets::find(preset_key)
+                .ok_or_else(|| format!("Unknown Atlas 14 preset `{preset_key}`. Run HC_ATLAS14."))?;
+            let curve = preset.to_curve(rp)?;
+            let rp_u = rp as u32;
+            state.params.idf.set_curve(rp_u, curve);
+            state.params.idf.set_design_rp(rp_u);
+            Ok(format!(
+                "Atlas 14 preset {preset_key} ({rp}-yr): i = {:.2}/(t+{:.2})^{:.3}",
+                preset.a(),
+                preset.b(),
+                preset.c(),
+            ))
+        }
+        "LIVE" => {
+            let lat = parse_f64(t.get(1).ok_or("HC_PARAMS LIVE <lat> <lon> [return_period]")?)?;
+            let lon = parse_f64(t.get(2).ok_or("HC_PARAMS LIVE <lat> <lon> [return_period]")?)?;
+            let rp: i32 = t.get(3).and_then(|s| s.parse().ok()).unwrap_or(10);
+            let fetcher = hydrocomplete::atlas14_fetcher::Atlas14Fetcher::new(Some(
+                hydrocomplete::atlas14_fetcher::default_cache_directory(),
+            ));
+            let res = fetcher.resolve_with_fallback(lat, lon, rp);
+            let curve = res.to_curve();
+            let rp_u = rp as u32;
+            state.params.idf.set_curve(rp_u, curve);
+            state.params.idf.set_design_rp(rp_u);
+            Ok(format!(
+                "Atlas 14 {} ({rp}-yr, {}): i = {:.2}/(t+{:.2})^{:.3}",
+                res.display_label,
+                res.source.as_str(),
+                res.a,
+                res.b,
+                res.c,
+            ))
+        }
         "RESET" => {
             state.params = StormAnalysisParams::municipal();
             Ok("Storm params reset to municipal defaults.".into())
         }
         _ => Err(format!(
-            "Unknown HC_PARAMS key `{key}`. Keys: RP, IDF, TAILWATER, MINTC, JUNCTIONK, VMIN, VMAX, MAXFULL, INLETLEN, INLETD, INLETS, RESET"
+            "Unknown HC_PARAMS key `{key}`. Keys: RP, IDF, PRESET, LIVE, TAILWATER, MINTC, JUNCTIONK, VMIN, VMAX, MAXFULL, INLETLEN, INLETD, INLETS, RESET"
         )),
     }
 }

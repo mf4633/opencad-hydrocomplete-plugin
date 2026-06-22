@@ -4,6 +4,21 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-06-22
+
+### Added
+
+- **Pro licensing** — `HC_ACTIVATE` (online validate + offline `hc_live_*` stub), `HC_LICENSE` status, `HC_REPORT_PDF` PDF export via `printpdf` (Pro gate; `HYDROCOMPLETE_PRO=1` dev bypass)
+- **NOAA Atlas 14** — 24 embedded city presets (`atlas14_presets`), live PFDS fetch + 30-day cache (`atlas14_fetcher`)
+- `HC_ATLAS14 LIVE <lat> <lon> [rp]` and `HC_ATLAS14 APPLY <key> [rp]`
+- `HC_PARAMS PRESET <key> [rp]` and `HC_PARAMS LIVE <lat> <lon> [rp]` apply IDF to tab state
+- Engine: `license`, `pdf_report`, `atlas14_presets`, `atlas14_fetcher`
+
+### Changed
+
+- `HC_ATLAS14` lists full preset table with multi-RP i@10m labels (mirrors Civil3D `IdfPrompts`)
+- 134 workspace tests (hydrocomplete 57, plugin 29, stormsewer 48)
+
 ## [0.3.0] - 2026-06-22
 
 ### Added
@@ -63,6 +78,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `stormsewer` engine crate — Rational, Manning, HGL, IDF, LandXML, design review
 - GPL-3.0-only license
 
+[0.4.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/releases/tag/v0.1.0

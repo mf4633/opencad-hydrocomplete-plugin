@@ -55,13 +55,43 @@ pub fn export_hydraulic_report<'a>(
     Ok((path, design_q))
 }
 
-/// Pro-only PDF stub message lines (mirrors Civil3D `HC_REPORT_PDF` gate).
 pub fn report_pdf_stub_lines() -> Vec<String> {
+    pro_required_lines()
+}
+
+pub fn pro_required_lines() -> Vec<String> {
     vec![
         "--- HydroComplete: PDF export is a Pro feature ---".into(),
-        "  Activate at https://hydrocomplete.com/civil3d".into(),
+        "  Activate at https://hydrocomplete.com/civil3d  (HC_ACTIVATE)".into(),
         "  Free alternative: HC_REPORT exports the same Manning + HGL report as HTML.".into(),
     ]
+}
+
+/// Analyze and export PDF report (Pro only). Returns `(path, peak design Q cfs)`.
+pub fn export_hydraulic_report_pdf<'a>(
+    entities: impl Iterator<Item = &'a EntityType>,
+    params: &StormAnalysisParams,
+    drawing_name: &str,
+) -> Result<(PathBuf, f64), String> {
+    if !hydrocomplete::license::is_pro_enabled() {
+        return Err("PDF export requires Pro license. Run HC_ACTIVATE or set HYDROCOMPLETE_PRO=1.".into());
+    }
+    let net = data::network_from_entities(entities)?;
+    let a = analysis::run_analysis_on_network(&net, params)?;
+    let design_q = a.pipes.iter().map(|p| p.design_q).fold(0.0f64, f64::max);
+    let path = build_report_path(drawing_name, "pdf");
+    hydrocomplete::pdf_report::write_hydraulic_report_pdf(
+        &path,
+        &net,
+        &a,
+        params,
+        &HtmlReportMeta {
+            title: "HydroComplete Report".into(),
+            drawing_name: drawing_name.to_string(),
+            generated_local: generated_local_label(),
+        },
+    )?;
+    Ok((path, design_q))
 }
 
 #[cfg(test)]

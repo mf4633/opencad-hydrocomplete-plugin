@@ -10,6 +10,7 @@ stormsewer = { path = "../stormsewer" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ureq = { version = "2", features = ["json"] }
+printpdf = "0.7"
 
 [lib]
 name = "hydrocomplete"

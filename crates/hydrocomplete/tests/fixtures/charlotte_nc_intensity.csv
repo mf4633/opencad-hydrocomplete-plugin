@@ -1,0 +1,22 @@
+Point precipitation frequency estimates (inches/hour)
+NOAA Atlas 14 Volume 2 Version 3
+Data type: Precipitation intensity
+Time series type: Partial duration
+Project area: Ohio River Basin
+Location name (ESRI Maps): None
+Station Name: None
+Latitude: 35.23 Degree
+Longitude: -80.84 Degree
+Elevation (USGS): None None
+PRECIPITATION FREQUENCY ESTIMATES by duration for ARI (years):, 1,2,5,10,25,50,100,200,500,1000
+5-min:, 4.80,5.68,6.60,7.27,8.03,8.57,9.05,9.47,9.95,10.3
+10-min:, 3.83,4.54,5.29,5.81,6.40,6.82,7.19,7.51,7.87,8.09
+15-min:, 3.19,3.80,4.46,4.90,5.41,5.76,6.06,6.31,6.60,6.77
+30-min:, 2.19,2.63,3.17,3.55,4.01,4.34,4.64,4.91,5.25,5.48
+60-min:, 1.36,1.65,2.03,2.31,2.67,2.94,3.19,3.44,3.77,4.00
+2-hr:, 0.792,0.958,1.19,1.37,1.59,1.76,1.94,2.11,2.33,2.50
+3-hr:, 0.562,0.678,0.847,0.977,1.15,1.29,1.43,1.57,1.77,1.92
+6-hr:, 0.341,0.410,0.513,0.593,0.702,0.788,0.876,0.967,1.09,1.19
+12-hr:, 0.200,0.242,0.303,0.352,0.419,0.473,0.529,0.588,0.669,0.734
+24-hr:, 0.116,0.140,0.176,0.204,0.242,0.273,0.304,0.335,0.379,0.413
+Date/time (GMT): Wed Jun 17 23:29:55 2026

@@ -177,8 +177,24 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             true
         }
         "HC_REPORT_PDF" => {
-            for line in report_export::report_pdf_stub_lines() {
-                host.push_output(&line);
+            let params = tab_params(host);
+            let drawing_name = format!("tab-{}", host.tab_index());
+            if !hydrocomplete::license::is_pro_enabled() {
+                for line in report_export::pro_required_lines() {
+                    host.push_output(&line);
+                }
+                return true;
+            }
+            match report_export::export_hydraulic_report_pdf(entities(host), &params, &drawing_name) {
+                Ok((path, design_q)) => {
+                    host.push_output("--- HydroComplete: PDF report written ---");
+                    host.push_output(&format!(
+                        "  Manning capacity + steady HGL (Q={design_q:.1} cfs) -> {}",
+                        path.display()
+                    ));
+                    host.push_info("Open the PDF from Documents/HydroComplete.");
+                }
+                Err(e) => host.push_error(&e),
             }
             true
         }
@@ -335,10 +351,9 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             commands::emit_lines(host, lines);
             true
         }
-        "HC_ATLAS14" => {
-            for line in commands::atlas14_lines() {
-                host.push_output(&line);
-            }
+        cmd if cmd == "HC_ATLAS14" || cmd.starts_with("HC_ATLAS14 ") => {
+            let args = command_arg(cmd).unwrap_or("");
+            commands::emit_lines(host, commands::atlas14_lines(args));
             true
         }
         "HC_LICENSE" => {
@@ -347,10 +362,11 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             }
             true
         }
-        "HC_ACTIVATE" => {
-            host.push_info(
-                "HC_ACTIVATE: online Pro activation planned for v0.3 (mirrors hydrocomplete.com/civil3d).",
-            );
+        cmd if cmd == "HC_ACTIVATE" || cmd.starts_with("HC_ACTIVATE ") => {
+            let args = command_arg(cmd).unwrap_or("");
+            for line in commands::activate_lines(args) {
+                host.push_output(&line);
+            }
             true
         }
         "HC_HGL" => {

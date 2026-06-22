@@ -221,30 +221,165 @@ pub fn scs_runoff_lines<'a>(
     Ok(lines)
 }
 
-pub fn atlas14_lines() -> Vec<String> {
-    let mut lines = vec![
-        "--- HydroComplete: NOAA Atlas 14 IDF presets (embedded v0.2) ---".into(),
-    ];
-    const PRESETS: &[(&str, &str, f64, f64, f64)] = &[
-        ("charlotte-nc", "Charlotte, NC (Atlas 14 Vol 8)", 81.0, 11.0, 0.82),
-        ("raleigh-nc", "Raleigh, NC (Atlas 14 Vol 8)", 78.0, 10.5, 0.81),
-        ("atlanta-ga", "Atlanta, GA (Atlas 14 Vol 9)", 96.0, 12.0, 0.80),
-        ("nashville-tn", "Nashville, TN (Atlas 14 Vol 5)", 72.0, 10.0, 0.79),
-        ("denver-co", "Denver, CO (Atlas 14 Vol 11)", 55.0, 8.0, 0.85),
-    ];
-    for (key, label, a, b, c) in PRESETS {
-        lines.push(format!("  {key:<18} {label} — a={a:.1}, b={b:.1}, c={c:.3}"));
+pub fn atlas14_lines(args: &str) -> Result<Vec<String>, String> {
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+    if tokens.first().map(|t| t.eq_ignore_ascii_case("LIVE")).unwrap_or(false) {
+        return atlas14_live_lines(&tokens[1..]);
     }
-    lines.push("  Use HC_PARAMS to set a/b/c, or HC_RATIONAL after HC_PARAMS.".into());
+    if tokens.first().map(|t| t.eq_ignore_ascii_case("APPLY")).unwrap_or(false) {
+        return atlas14_apply_lines(&tokens[1..]);
+    }
+    Ok(atlas14_list_lines())
+}
+
+fn atlas14_list_lines() -> Vec<String> {
+    let mut lines = vec![
+        "--- HydroComplete: NOAA Atlas 14 IDF ---".into(),
+        "  i = a/(t+b)^c   (default 10-yr curve; t in minutes)".into(),
+        "  i@10m tabular intensities shown for 2 / 10 / 25 / 100-yr return periods.".into(),
+        "  Live PFDS: HC_ATLAS14 LIVE <lat> <lon> [rp]  (cached 30 days under %APPDATA%/HydroComplete/idf-cache)".into(),
+        "  Apply preset: HC_PARAMS PRESET <key> [rp]  or  HC_ATLAS14 APPLY <key> [rp]".into(),
+        String::new(),
+        "  embedded presets (10-yr a/b/c + multi-RP i@10m):".into(),
+    ];
+    for p in hydrocomplete::atlas14_presets::list() {
+        lines.push(format!(
+            "  {:<16} {:<20} a={:5.1} b={:4.1} c={:.2}  {}",
+            p.key,
+            p.display_name,
+            p.a(),
+            p.b(),
+            p.c(),
+            p.multi_return_period_10min_label(),
+        ));
+    }
+    lines.push("  Use preset key with HC_PARAMS PRESET, then HC_RATIONAL / HC_ANALYZE.".into());
     lines
+}
+
+fn atlas14_live_lines(tokens: &[&str]) -> Result<Vec<String>, String> {
+    let lat: f64 = tokens
+        .first()
+        .ok_or("HC_ATLAS14 LIVE <lat> <lon> [return_period]")?
+        .parse()
+        .map_err(|_| "Invalid latitude")?;
+    let lon: f64 = tokens
+        .get(1)
+        .ok_or("HC_ATLAS14 LIVE <lat> <lon> [return_period]")?
+        .parse()
+        .map_err(|_| "Invalid longitude")?;
+    let rp: i32 = tokens
+        .get(2)
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(10);
+    let fetcher = hydrocomplete::atlas14_fetcher::Atlas14Fetcher::new(Some(
+        hydrocomplete::atlas14_fetcher::default_cache_directory(),
+    ));
+    let res = fetcher.resolve_with_fallback(lat, lon, rp);
+    Ok(vec![
+        format!(
+            "--- HydroComplete: NOAA Atlas 14 @ {lat:.4}, {lon:.4} ({rp}-yr) ---"
+        ),
+        format!("  Source: {}", res.source.as_str()),
+        format!("  Label: {}", res.display_label),
+        format!("  IDF: i = {:.2}/(t+{:.2})^{:.3}", res.a, res.b, res.c),
+        format!(
+            "  i@10min = {:.2} in/hr",
+            res.to_curve().intensity(10.0)
+        ),
+        "  Apply to tab: HC_PARAMS LIVE {lat} {lon} {rp}".into(),
+    ])
+}
+
+fn atlas14_apply_lines(tokens: &[&str]) -> Result<Vec<String>, String> {
+    let key = tokens
+        .first()
+        .ok_or("HC_ATLAS14 APPLY <preset-key> [return_period]")?;
+    let rp: i32 = tokens.get(1).and_then(|s| s.parse().ok()).unwrap_or(10);
+    let preset = hydrocomplete::atlas14_presets::find(key)
+        .ok_or_else(|| format!("Unknown preset '{key}'. Run HC_ATLAS14 for keys."))?;
+    let res = hydrocomplete::atlas14_fetcher::Atlas14Resolution::from_preset(preset, rp)?;
+    Ok(vec![
+        format!("--- HydroComplete: Atlas 14 preset '{key}' ({rp}-yr) ---"),
+        format!("  {} ({})", preset.display_name, preset.state),
+        format!("  IDF: i = {:.2}/(t+{:.2})^{:.3}", res.a, res.b, res.c),
+        format!(
+            "  i@10min = {:.2} in/hr  |  run HC_PARAMS PRESET {key} {rp} to apply to this tab",
+            res.to_curve().intensity(10.0)
+        ),
+    ])
 }
 
 pub fn license_lines() -> Vec<String> {
     vec![
         "=== HydroComplete License ===".into(),
-        "  Mode: Free (Open CAD Studio edition)".into(),
-        "  Pro features (HC_REPORT_PDF) — use HC_ACTIVATE when licensing is wired.".into(),
+        format!("  Status: {}", hydrocomplete::license::status_label()),
+        format!(
+            "  Validation mode: {}",
+            hydrocomplete::license::validation_mode_label()
+        ),
+        format!(
+            "  Last validated: {}",
+            hydrocomplete::license::last_validated_label()
+        ),
+        format!(
+            "  Network: {}",
+            hydrocomplete::license::online_offline_label()
+        ),
+        format!(
+            "  License file: {}",
+            hydrocomplete::license::license_file_path().display()
+        ),
+        "  Activate: HC_ACTIVATE <email> <token>  |  https://hydrocomplete.com/civil3d".into(),
+        "  Pro unlocks PDF export (HC_REPORT_PDF). HTML reports (HC_REPORT) stay free.".into(),
     ]
+}
+
+pub fn activate_lines(args: &str) -> Vec<String> {
+    let trimmed = args.trim();
+    if trimmed.is_empty() {
+        return vec![
+            "=== HydroComplete Pro Activation ===".into(),
+            "  Usage: HC_ACTIVATE <email> <hc_live_token>".into(),
+            "  Or paste both on one line: email@domain.com hc_live_...".into(),
+            "  Get a beta token at https://hydrocomplete.com/civil3d".into(),
+        ];
+    }
+    let (email, token) = if let Some((e, t)) = hydrocomplete::license::try_parse_combined_input(trimmed) {
+        (e, t)
+    } else {
+        let mut parts = trimmed.split_whitespace();
+        let email = parts.next().unwrap_or("").to_string();
+        let token = parts.next().unwrap_or("").to_string();
+        if email.is_empty() || token.is_empty() {
+            return vec![
+                "Activation failed: provide email and token.".into(),
+                "  Usage: HC_ACTIVATE user@example.com hc_live_...".into(),
+            ];
+        }
+        (email, token)
+    };
+    let activator = hydrocomplete::license::LicenseActivator::new();
+    let path = hydrocomplete::license::license_file_path();
+    let result = activator.activate(&email, &token, &path);
+    let mut lines = vec!["=== HydroComplete Pro Activation ===".into()];
+    if result.success {
+        lines.push(format!("  {}", result.message));
+        lines.push(format!("  Mode: {:?}", result.mode));
+        if !result.expires.is_empty() {
+            if let Some(d) = result.expires.get(..10) {
+                lines.push(format!("  Expires: {d}"));
+            }
+        }
+        lines.push(format!(
+            "  Status: {}",
+            hydrocomplete::license::status_label()
+        ));
+        lines.push("  Pro unlocks HC_REPORT_PDF. Run HC_LICENSE for details.".into());
+    } else {
+        lines.push(format!("  Activation failed: {}", result.message));
+    }
+    lines
 }
 
 pub fn gvf_lines(args: &str) -> Result<Vec<String>, String> {

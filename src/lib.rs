@@ -40,7 +40,7 @@ pub mod manifest {
     pub static MANIFEST: PluginManifest = PluginManifest {
         id: PLUGIN_ID,
         name: "HydroComplete",
-        version: "0.3.0",
+        version: "0.4.0",
         description: "Stormwater hydrology and hydraulics — mirrors HydroComplete.Civil3D",
         api_version: ApiVersion::CURRENT,
         ribbon_order: 45,
