@@ -92,5 +92,24 @@ Test-Report "LandXML healthy" @(
     '<tr class="capacity-na">'
 )
 
+Test-Report "HC_PIPE_ARGS serve" @(
+    '{"op":"new"}'
+    '{"op":"run","cmd":"HC_INLET 0,0"}'
+    '{"op":"run","cmd":"HC_JUNCTION 50,0"}'
+    '{"op":"run","cmd":"HC_OUTFALL 100,0"}'
+    '{"op":"run","cmd":"HC_PIPE_ARGS 2B 2C d15 n13"}'
+    '{"op":"run","cmd":"HC_PIPE_ARGS 2C 2D d18 n13"}'
+    '{"op":"run","cmd":"HC_EDIT 2B area 2.0 c 0.75"}'
+    '{"op":"run","cmd":"HC_PARAMS PRESET charlotte-nc 10"}'
+    '{"op":"run","cmd":"HC_REPORT"}'
+) @(
+    "Network/P1"
+    "Network/P1*</td><td>1.25"
+    "Network/P2*</td><td>1.50"
+    "a=81.2"
+) @(
+    "Network/P1*</td><td>1.50</td><td>0.0010*"
+)
+
 Write-Host ""
 Write-Host "ALL SLOPE REPORT TESTS PASSED"

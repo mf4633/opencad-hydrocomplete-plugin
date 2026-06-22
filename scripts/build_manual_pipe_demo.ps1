@@ -36,7 +36,7 @@ $requests = @(
     "{`"op`":`"save`",`"path`":`"$demoPath`"}"
 )
 
-Write-Host "Running manual pipe automation (handles + HC_EDIT)..."
+Write-Host "Running manual pipe automation (HC_PIPE_ARGS d15/d18)..."
 $output = ($requests -join "`n") | & $Ocs --serve 2>&1
 $output | ForEach-Object { Write-Host $_ }
 
