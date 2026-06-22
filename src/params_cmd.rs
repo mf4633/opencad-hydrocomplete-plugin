@@ -49,6 +49,7 @@ pub fn apply_params(state: &mut HydroTabState, rest: &str) -> Result<String, Str
             let c = parse_f64(t[ai + 2])?;
             state.params.idf.set_curve(rp, IdfCurve::new(a, b, c));
             state.params.idf.set_design_rp(rp);
+            state.preset_key = None;
             Ok(format!("IDF for {rp}-yr set: i = {a}/(t+{b})^{c}"))
         }
         "TAILWATER" | "TW" => {
@@ -117,6 +118,7 @@ pub fn apply_params(state: &mut HydroTabState, rest: &str) -> Result<String, Str
             let rp_u = rp as u32;
             state.params.idf.set_curve(rp_u, curve);
             state.params.idf.set_design_rp(rp_u);
+            state.preset_key = Some(preset_key.to_string());
             Ok(format!(
                 "Atlas 14 preset {preset_key} ({rp}-yr): i = {:.2}/(t+{:.2})^{:.3}",
                 preset.a(),
@@ -136,6 +138,7 @@ pub fn apply_params(state: &mut HydroTabState, rest: &str) -> Result<String, Str
             let rp_u = rp as u32;
             state.params.idf.set_curve(rp_u, curve);
             state.params.idf.set_design_rp(rp_u);
+            state.preset_key = None;
             Ok(format!(
                 "Atlas 14 {} ({rp}-yr, {}): i = {:.2}/(t+{:.2})^{:.3}",
                 res.display_label,
@@ -147,6 +150,7 @@ pub fn apply_params(state: &mut HydroTabState, rest: &str) -> Result<String, Str
         }
         "RESET" => {
             state.params = StormAnalysisParams::municipal();
+            state.preset_key = None;
             Ok("Storm params reset to municipal defaults.".into())
         }
         _ => Err(format!(

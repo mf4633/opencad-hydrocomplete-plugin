@@ -13,6 +13,7 @@ mod civil_import;
 mod commands;
 mod data;
 mod dispatch;
+mod drawing_params;
 mod edit;
 mod interactive;
 mod network_edit;
@@ -41,7 +42,7 @@ pub mod manifest {
     pub static MANIFEST: PluginManifest = PluginManifest {
         id: PLUGIN_ID,
         name: "HydroComplete",
-        version: "0.4.3",
+        version: "0.4.4",
         description: "Stormwater hydrology and hydraulics — mirrors HydroComplete.Civil3D",
         api_version: ApiVersion::CURRENT,
         ribbon_order: 45,
@@ -49,6 +50,7 @@ pub mod manifest {
             "HYDROCOMPLETE_STRUCT",
             "HYDROCOMPLETE_PIPE",
             "HYDROCOMPLETE_CATCHMENT",
+            "HYDROCOMPLETE_PARAMS",
         ],
         command_prefixes: &["HC_"],
     };

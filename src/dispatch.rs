@@ -9,6 +9,7 @@ use stormsewer::network::NodeKind;
 
 use super::analysis;
 use super::commands;
+use super::drawing_params;
 use super::edit;
 use super::civil_import;
 use super::landxml_import;
@@ -25,9 +26,13 @@ use super::validation;
 use super::{data, style, write_labels};
 
 fn tab_params(host: &mut dyn HostApi) -> stormsewer::params::StormAnalysisParams {
-    ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default)
-        .params()
-        .clone()
+    let from_drawing =
+        drawing_params::read_params_from_entities(host.document().entities());
+    let state = ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default);
+    if let Some(p) = from_drawing {
+        state.params = p;
+    }
+    state.params.clone()
 }
 
 fn entities<'a>(host: &'a dyn HostApi) -> impl Iterator<Item = &'a EntityType> {
@@ -277,9 +282,24 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
         }
         cmd if cmd == "HC_PARAMS" || cmd.starts_with("HC_PARAMS ") => {
             let rest = cmd.trim_start_matches("HC_PARAMS").trim();
-            let state = ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default);
-            match params_cmd::apply_params(state, rest) {
-                Ok(msg) => host.push_info(&msg),
+            let outcome = {
+                let state = ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default);
+                match params_cmd::apply_params(state, rest) {
+                    Ok(msg) => Ok((state.params.clone(), state.preset_key.clone(), msg)),
+                    Err(e) => Err(e),
+                }
+            };
+            match outcome {
+                Ok((params, preset_key, msg)) => {
+                    if let Err(e) = drawing_params::write_params_to_drawing(
+                        host,
+                        &params,
+                        preset_key.as_deref(),
+                    ) {
+                        host.push_error(&e);
+                    }
+                    host.push_info(&msg);
+                }
                 Err(e) => host.push_error(&e),
             }
             true

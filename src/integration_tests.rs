@@ -181,4 +181,32 @@ mod tests {
         };
         assert!((tc_val - 15.5).abs() < 1e-6, "tc={tc_val}");
     }
+
+    #[test]
+    fn drawing_params_marker_roundtrip() {
+        use acadrust::MText;
+        use acadrust::xdata::{ExtendedDataRecord, XDataValue};
+
+        use crate::drawing_params::{self, APP_PARAMS};
+
+        let mut params = StormAnalysisParams::municipal();
+        let preset = hydrocomplete::atlas14_presets::find("charlotte-nc").unwrap();
+        let curve = preset.to_curve(10).unwrap();
+        params.idf.set_curve(10, curve);
+        params.idf.set_design_rp(10);
+
+        let blob = drawing_params::ParamsBlob::from_params(&params, Some("charlotte-nc"));
+        let json = serde_json::to_string(&blob).unwrap();
+        let mut marker = EntityType::MText(MText {
+            value: "HC".into(),
+            ..Default::default()
+        });
+        let mut rec = ExtendedDataRecord::new(APP_PARAMS);
+        rec.add_value(XDataValue::String(json));
+        marker.common_mut().extended_data.add_record(rec);
+
+        let restored = drawing_params::read_params_from_entities([&marker].into_iter())
+            .expect("read params marker");
+        assert!((restored.idf.design_curve().a - 81.2).abs() < 0.1);
+    }
 }

@@ -4,6 +4,17 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.4] - 2026-06-22
+
+### Added
+
+- **Drawing params persistence** — `HYDROCOMPLETE_PARAMS` XDATA marker stores IDF/hydraulics/sizing with the DWG; restored on open so `HC_REPORT` works without re-running `HC_PARAMS`
+- `scripts/open_demo_reports.ps1` — open saved demos, verify Charlotte `a=81.2` and non-zero Q
+
+### Changed
+
+- `HC_PARAMS` writes params marker to the drawing (hidden `HC-META` MText)
+
 ## [0.4.3] - 2026-06-22
 
 ### Added
