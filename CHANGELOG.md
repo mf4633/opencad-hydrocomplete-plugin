@@ -4,6 +4,23 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.7] - 2026-06-22
+
+### Added
+
+- **Separate Open CAD Studio license SKU** — `product: opencad` validation; licenses stored in `opencad-license.json` (independent from Civil 3D keys)
+- `scripts/install_dev_plugin.ps1` — debug DLL install for local OCS automation
+
+### Changed
+
+- `HC_ACTIVATE` / `HC_LICENSE` point to `https://hydrocomplete.com/opencad`; Civil 3D listed as a separate SKU
+- Release builds require online license validation; offline stub and `HYDROCOMPLETE_PRO` bypass are debug-only
+- Demo scripts tolerate Cargo warnings on stderr; use debug plugin for `HYDROCOMPLETE_PRO` in automation
+
+### Fixed
+
+- `Cargo.toml` / `plugin.toml` / ribbon manifest versions synced to 0.4.7
+
 ## [0.4.6] - 2026-06-22
 
 ### Fixed
