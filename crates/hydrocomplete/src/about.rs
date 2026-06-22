@@ -46,7 +46,7 @@ pub const ABOUT_LINES: &[&str] = &[
     "  HC_LANDXML_IMPORT Import LandXML 1.2 and compare to drawing",
     "  HC_CIVIL_IMPORT   Bridge Civil 3D I-SEWER-NETWORK blocks+lines to HC XDATA",
     "  HC_ATLAS14       List Atlas 14 IDF presets + live PFDS fetch info",
-    "  HC_ACTIVATE      Activate Pro with email + beta token (hc_live_*)",
+    "  HC_ACTIVATE      Activate Open CAD Studio Pro (hc_live_* key from hydrocomplete.com/opencad)",
     "  HC_LICENSE       Show Free/Pro license status and activation info",
     "  HC_INLET / HC_JUNCTION / HC_OUTFALL / HC_PIPE  Place network geometry (OpenCAD)",
     "  HC_PIPE_ARGS       Non-interactive pipe placement (OCS --serve; d15 n13 = 15 in, n=0.013)",

@@ -1,4 +1,4 @@
-//! Pro license activation — mirrors `LicenseActivator.cs`.
+//! Pro license activation for the Open CAD Studio SKU (`product = "opencad"`).
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -9,6 +9,15 @@ pub const DEFAULT_VALIDATE_URL: &str =
     "https://hc-refactored.fly.dev/api/licensing/validate";
 
 pub const TOKEN_PREFIX: &str = "hc_live_";
+
+/// Server-side SKU identifier for this client (separate from Civil 3D `civil3d` keys).
+pub const PRODUCT_ID: &str = "opencad";
+
+pub const PRODUCT_LABEL: &str = "Open CAD Studio";
+
+pub const PURCHASE_URL: &str = "https://hydrocomplete.com/opencad";
+
+pub const LICENSE_FILE_NAME: &str = "opencad-license.json";
 
 pub const STUB_VALIDITY_DAYS: u64 = 365;
 
@@ -25,6 +34,8 @@ pub struct LicenseRecord {
     pub email: String,
     pub token: String,
     pub expires: String,
+    #[serde(default)]
+    pub product: String,
     #[serde(default)]
     pub last_validated: String,
     #[serde(default, rename = "validationMode")]
@@ -44,16 +55,23 @@ pub fn license_file_path() -> PathBuf {
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(PathBuf::from))
     {
-        base.join("HydroComplete").join("license.json")
+        base.join("HydroComplete").join(LICENSE_FILE_NAME)
     } else {
-        PathBuf::from(".hydrocomplete-license.json")
+        PathBuf::from(format!(".{LICENSE_FILE_NAME}"))
     }
 }
 
 pub fn is_dev_bypass_enabled() -> bool {
-    std::env::var("HYDROCOMPLETE_PRO")
-        .map(|v| v == "1")
-        .unwrap_or(false)
+    #[cfg(not(debug_assertions))]
+    {
+        false
+    }
+    #[cfg(debug_assertions)]
+    {
+        std::env::var("HYDROCOMPLETE_PRO")
+            .map(|v| v == "1")
+            .unwrap_or(false)
+    }
 }
 
 pub fn is_well_formed_token(token: &str) -> bool {
@@ -143,6 +161,9 @@ impl LicenseActivator {
         if existing.email.is_empty() || existing.token.is_empty() {
             return fail("No license file to validate. Run HC_ACTIVATE first.");
         }
+        if existing.product != PRODUCT_ID {
+            return fail(wrong_product_message());
+        }
         self.activate_core(&existing.email, &existing.token, license_path)
     }
 
@@ -153,18 +174,17 @@ impl LicenseActivator {
                 let _ = write_license_file(license_path, &record);
                 return LicenseActivationResult {
                     success: true,
-                    message: "Pro activated (online validation).".into(),
+                    message: format!("Pro activated for {PRODUCT_LABEL} (online validation)."),
                     mode: LicenseValidationMode::Online,
                     expires: record.expires,
                 };
             }
         }
         if online.server_said_invalid {
-            return fail(
-                online
-                    .error_message
-                    .unwrap_or_else(|| "License is not valid on the server. Contact support.".into()),
-            );
+            let detail = online
+                .error_message
+                .unwrap_or_else(|| "License is not valid on the server.".into());
+            return fail(format!("{detail} {}", wrong_product_hint()));
         }
         if !is_well_formed_token(token) {
             return fail(
@@ -173,30 +193,47 @@ impl LicenseActivator {
                     .unwrap_or_else(|| "Online validation failed and token format is invalid.".into()),
             );
         }
-        let stub = build_offline_stub_record(email, token);
-        let _ = write_license_file(license_path, &stub);
-        let message = if online.was_network_attempt {
-            "Pro activated (offline stub — hydrocomplete.com unreachable or token not in server registry)."
-        } else {
-            "Pro activated (offline stub — beta token accepted locally)."
-        };
-        LicenseActivationResult {
-            success: true,
-            message: message.into(),
-            mode: LicenseValidationMode::OfflineStub,
-            expires: stub.expires.clone(),
+
+        #[cfg(not(debug_assertions))]
+        {
+            let detail = online.error_message.unwrap_or_else(|| {
+                "Could not reach the license server.".into()
+            });
+            return fail(format!(
+                "{detail} Purchase an Open CAD Studio key at {PURCHASE_URL} and try again."
+            ));
+        }
+
+        #[cfg(debug_assertions)]
+        {
+            let stub = build_offline_stub_record(email, token);
+            let _ = write_license_file(license_path, &stub);
+            let message = if online.was_network_attempt {
+                format!(
+                    "Pro activated (offline stub — server unreachable; dev build only). Purchase: {PURCHASE_URL}"
+                )
+            } else {
+                "Pro activated (offline stub — dev build only).".into()
+            };
+            LicenseActivationResult {
+                success: true,
+                message,
+                mode: LicenseValidationMode::OfflineStub,
+                expires: stub.expires.clone(),
+            }
         }
     }
 
     fn try_online_validation(&self, email: &str, token: &str) -> OnlineValidationAttempt {
         let body = serde_json::json!({
             "licenseKey": token,
-            "features": ["reports", "export", "civil3d"],
+            "product": PRODUCT_ID,
+            "features": ["reports", "export"],
         });
         let agent = ureq::AgentBuilder::new()
             .timeout_connect(Duration::from_secs(15))
             .timeout_read(Duration::from_secs(15))
-            .user_agent("HydroComplete-OpenCAD/0.4")
+            .user_agent(&user_agent_string())
             .build();
         match agent
             .post(&self.validate_url)
@@ -248,13 +285,13 @@ impl LicenseActivator {
                 OnlineValidationAttempt {
                     success: true,
                     was_network_attempt: true,
-                    record: Some(LicenseRecord {
-                        email: email.to_string(),
-                        token: stored_token,
-                        expires,
-                        last_validated: now,
-                        validation_mode: "online".into(),
-                    }),
+                    record: Some(new_license_record(
+                        email,
+                        &stored_token,
+                        &expires,
+                        &now,
+                        "online",
+                    )),
                     ..Default::default()
                 }
             }
@@ -276,25 +313,55 @@ struct OnlineValidationAttempt {
     record: Option<LicenseRecord>,
 }
 
+fn new_license_record(
+    email: &str,
+    token: &str,
+    expires: &str,
+    last_validated: &str,
+    validation_mode: &str,
+) -> LicenseRecord {
+    LicenseRecord {
+        email: email.to_string(),
+        token: token.to_string(),
+        expires: expires.to_string(),
+        product: PRODUCT_ID.into(),
+        last_validated: last_validated.to_string(),
+        validation_mode: validation_mode.into(),
+    }
+}
+
 fn build_offline_stub_record(email: &str, token: &str) -> LicenseRecord {
     let now_secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
     let expires_secs = now_secs + STUB_VALIDITY_DAYS * 86400;
-    LicenseRecord {
-        email: email.to_string(),
-        token: token.to_string(),
-        expires: format_iso8601(expires_secs),
-        last_validated: format_iso8601(now_secs),
-        validation_mode: "offline-stub".into(),
-    }
+    new_license_record(
+        email,
+        token,
+        &format_iso8601(expires_secs),
+        &format_iso8601(now_secs),
+        "offline-stub",
+    )
 }
 
 fn is_license_fields_valid(record: &LicenseRecord) -> bool {
     !record.email.trim().is_empty()
         && !record.token.trim().is_empty()
         && !record.expires.trim().is_empty()
+        && record.product == PRODUCT_ID
+}
+
+fn wrong_product_message() -> String {
+    format!("This license file is not for {PRODUCT_LABEL} (product={PRODUCT_ID}).")
+}
+
+fn wrong_product_hint() -> String {
+    format!("Open CAD Studio keys are sold at {PURCHASE_URL}. Civil 3D keys use a separate SKU.")
+}
+
+fn user_agent_string() -> String {
+    format!("HydroComplete-OpenCAD/{}", env!("CARGO_PKG_VERSION"))
 }
 
 fn parse_rfc3339(s: &str) -> Option<SystemTime> {
@@ -302,7 +369,6 @@ fn parse_rfc3339(s: &str) -> Option<SystemTime> {
 }
 
 fn chrono_like_parse(s: &str) -> Option<SystemTime> {
-    // Minimal ISO-8601 parse for license expiry (YYYY-MM-DDTHH:MM:SSZ or offset).
     let s = s.trim();
     if s.len() < 10 {
         return None;
@@ -384,18 +450,30 @@ pub fn is_pro_enabled() -> bool {
 
 pub fn status_label() -> String {
     if is_dev_bypass_enabled() {
-        return "Pro (dev bypass: HYDROCOMPLETE_PRO=1)".into();
+        return format!("Pro ({PRODUCT_LABEL}, dev bypass: HYDROCOMPLETE_PRO=1)");
     }
     let path = license_file_path();
     if let Some(license) = try_read_license(&path) {
         if let Some(expires) = format_expiry_date(&license.expires) {
-            return format!("Pro (licensed to {}, expires {expires})", license.email);
+            return format!(
+                "Pro ({PRODUCT_LABEL}, licensed to {}, expires {expires})",
+                license.email
+            );
         }
-        return format!("Pro (licensed to {})", license.email);
+        return format!(
+            "Pro ({PRODUCT_LABEL}, licensed to {})",
+            license.email
+        );
     }
-    if let Some(expired) = try_read_license_metadata(&path) {
-        if let Some(expires) = format_expiry_date(&expired.expires) {
-            return format!("Expired (was {}, expired {expires})", expired.email);
+    if let Some(stored) = try_read_license_metadata(&path) {
+        if !stored.product.is_empty() && stored.product != PRODUCT_ID {
+            return format!(
+                "Free (license file is for product '{}', not {PRODUCT_ID})",
+                stored.product
+            );
+        }
+        if let Some(expires) = format_expiry_date(&stored.expires) {
+            return format!("Expired ({PRODUCT_LABEL}, was {}, expired {expires})", stored.email);
         }
     }
     "Free".into()
@@ -436,7 +514,7 @@ pub fn online_offline_label() -> String {
     }
     match validation_mode_label().as_str() {
         "online" => "online (server validated)".into(),
-        "offline-stub" => "offline (local beta stub)".into(),
+        "offline-stub" => "offline (local beta stub, dev build only)".into(),
         "none" => "offline (no license)".into(),
         _ => "offline (local file)".into(),
     }
@@ -464,5 +542,37 @@ mod tests {
         let (e, t) = try_parse_combined_input("user@example.com hc_live_abcdefgh").unwrap();
         assert_eq!(e, "user@example.com");
         assert_eq!(t, "hc_live_abcdefgh");
+    }
+
+    #[test]
+    fn accepts_opencad_product_only() {
+        let record = new_license_record(
+            "user@example.com",
+            "hc_live_abcdefgh",
+            "2099-01-01T00:00:00Z",
+            "2026-01-01T00:00:00Z",
+            "online",
+        );
+        assert!(is_license_fields_valid(&record));
+        assert_eq!(record.product, PRODUCT_ID);
+    }
+
+    #[test]
+    fn rejects_civil3d_product() {
+        let mut record = new_license_record(
+            "user@example.com",
+            "hc_live_abcdefgh",
+            "2099-01-01T00:00:00Z",
+            "2026-01-01T00:00:00Z",
+            "online",
+        );
+        record.product = "civil3d".into();
+        assert!(!is_license_fields_valid(&record));
+    }
+
+    #[test]
+    fn license_file_uses_opencad_name() {
+        let path = license_file_path();
+        assert!(path.to_string_lossy().ends_with(LICENSE_FILE_NAME));
     }
 }

@@ -62,7 +62,10 @@ pub fn report_pdf_stub_lines() -> Vec<String> {
 pub fn pro_required_lines() -> Vec<String> {
     vec![
         "--- HydroComplete: PDF export is a Pro feature ---".into(),
-        "  Activate at https://hydrocomplete.com/civil3d  (HC_ACTIVATE)".into(),
+        format!(
+            "  Activate at {}  (HC_ACTIVATE)",
+            hydrocomplete::license::PURCHASE_URL
+        ),
         "  Free alternative: HC_REPORT exports the same Manning + HGL report as HTML.".into(),
     ]
 }
@@ -74,7 +77,11 @@ pub fn export_hydraulic_report_pdf<'a>(
     drawing_name: &str,
 ) -> Result<(PathBuf, f64), String> {
     if !hydrocomplete::license::is_pro_enabled() {
-        return Err("PDF export requires Pro license. Run HC_ACTIVATE or set HYDROCOMPLETE_PRO=1.".into());
+        return Err(format!(
+            "PDF export requires a {} Pro license. Run HC_ACTIVATE or purchase at {}.",
+            hydrocomplete::license::PRODUCT_LABEL,
+            hydrocomplete::license::PURCHASE_URL
+        ));
     }
     let net = data::network_from_entities(entities)?;
     let a = analysis::run_analysis_on_network(&net, params)?;

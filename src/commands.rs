@@ -354,6 +354,11 @@ fn atlas14_apply_lines(tokens: &[&str]) -> Result<Vec<String>, String> {
 pub fn license_lines() -> Vec<String> {
     vec![
         "=== HydroComplete License ===".into(),
+        format!(
+            "  Product: {} ({})",
+            hydrocomplete::license::PRODUCT_LABEL,
+            hydrocomplete::license::PRODUCT_ID
+        ),
         format!("  Status: {}", hydrocomplete::license::status_label()),
         format!(
             "  Validation mode: {}",
@@ -371,8 +376,12 @@ pub fn license_lines() -> Vec<String> {
             "  License file: {}",
             hydrocomplete::license::license_file_path().display()
         ),
-        "  Activate: HC_ACTIVATE <email> <token>  |  https://hydrocomplete.com/civil3d".into(),
+        format!(
+            "  Activate: HC_ACTIVATE <email> <token>  |  {}",
+            hydrocomplete::license::PURCHASE_URL
+        ),
         "  Pro unlocks PDF export (HC_REPORT_PDF). HTML reports (HC_REPORT) stay free.".into(),
+        "  Civil 3D uses a separate license SKU (hydrocomplete.com/civil3d).".into(),
     ]
 }
 
@@ -380,10 +389,16 @@ pub fn activate_lines(args: &str) -> Vec<String> {
     let trimmed = args.trim();
     if trimmed.is_empty() {
         return vec![
-            "=== HydroComplete Pro Activation ===".into(),
+            format!(
+                "=== HydroComplete Pro Activation ({}) ===",
+                hydrocomplete::license::PRODUCT_LABEL
+            ),
             "  Usage: HC_ACTIVATE <email> <hc_live_token>".into(),
             "  Or paste both on one line: email@domain.com hc_live_...".into(),
-            "  Get a beta token at https://hydrocomplete.com/civil3d".into(),
+            format!(
+                "  Purchase an Open CAD Studio key at {}",
+                hydrocomplete::license::PURCHASE_URL
+            ),
         ];
     }
     let (email, token) = if let Some((e, t)) = hydrocomplete::license::try_parse_combined_input(trimmed) {

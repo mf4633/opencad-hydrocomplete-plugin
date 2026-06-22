@@ -1,10 +1,13 @@
 # Open saved demo DWGs, run HC_REPORT (+ PDF), verify Charlotte IDF persisted in drawing.
 $ErrorActionPreference = "Stop"
+$Root = Split-Path $PSScriptRoot -Parent
 $Ocs = "C:\Users\michael.flynn\Downloads\OpenCADStudio-v0.6.0-windows-x86_64-portable.exe"
 $ReportDir = Join-Path $env:USERPROFILE "Documents\HydroComplete"
 $env:HYDROCOMPLETE_PRO = "1"
 
 if (-not (Test-Path $Ocs)) { throw "OCS not found: $Ocs" }
+& (Join-Path $PSScriptRoot "install_dev_plugin.ps1") -Root $Root
+Start-Sleep -Seconds 2
 
 function Latest-Report($ext) {
     Start-Sleep -Milliseconds 1500

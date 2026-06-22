@@ -11,18 +11,7 @@ $OutDwg = Join-Path $ReportDir "hydrocomplete-demo-fixed.dwg"
 if (-not (Test-Path $Ocs)) { throw "OpenCADStudio not found: $Ocs" }
 if (-not (Test-Path $LandXml)) { throw "LandXML sample not found: $LandXml" }
 
-Write-Host "Building release plugin..."
-Push-Location $Root
-$ErrorActionPreference = 'Continue'
-cargo build --release -p opencad-hydrocomplete-plugin 2>&1 | Out-Host
-$buildExit = $LASTEXITCODE
-$ErrorActionPreference = 'Stop'
-if ($buildExit -ne 0) { throw "cargo build failed" }
-Pop-Location
-
-Copy-Item -Force (Join-Path $Root "target\release\opencad_hydrocomplete_plugin.dll") `
-    (Join-Path $PluginDir "opencad.hydrocomplete-windows-x86_64.dll")
-Write-Host "Installed plugin DLL"
+& (Join-Path $PSScriptRoot "install_dev_plugin.ps1") -Root $Root
 
 Start-Sleep -Seconds 2
 $demoPath = ($OutDwg -replace '\\', '/')

@@ -13,16 +13,7 @@ if (-not (Test-Path $Ocs)) { throw "OCS not found: $Ocs" }
 if (-not (Test-Path ($Dwg -replace '/', '\'))) { throw "DWG not found: $Dwg" }
 New-Item -ItemType Directory -Force -Path $WorkDir | Out-Null
 
-Write-Host "Building release plugin (v0.4.5 label import)..."
-Push-Location $Root
-$ErrorActionPreference = 'Continue'
-cargo build --release -p opencad-hydrocomplete-plugin 2>&1 | Out-Host
-$buildExit = $LASTEXITCODE
-$ErrorActionPreference = 'Stop'
-if ($buildExit -ne 0) { throw "cargo build failed" }
-Pop-Location
-Copy-Item -Force (Join-Path $Root "target\release\opencad_hydrocomplete_plugin.dll") `
-    (Join-Path $PluginDir "opencad.hydrocomplete-windows-x86_64.dll")
+& (Join-Path $PSScriptRoot "install_dev_plugin.ps1") -Root $Root
 Write-Host "Installed plugin DLL"
 Start-Sleep -Seconds 2
 
