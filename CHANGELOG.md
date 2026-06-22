@@ -4,6 +4,19 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.2] - 2026-06-22
+
+### Added
+
+- Ribbon: **Pipe Args** (`HC_PIPE_ARGS`) and **PDF Report** (`HC_REPORT_PDF`) tools
+- PDF report: Manning + HGL + structure tables with surcharge/flat-invert status, multi-page overflow, disclaimer
+- CI test workflow on push/PR; `scripts/run_all_demos.ps1`; `HC_PIPE_ARGS` slope regression test
+
+### Changed
+
+- PDF export mirrors HTML report logic (`manning_slope*`, `report_surcharged`, adverse/N/A labels)
+- 150 workspace tests
+
 ## [0.4.1] - 2026-06-22
 
 ### Fixed
@@ -94,6 +107,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `stormsewer` engine crate — Rational, Manning, HGL, IDF, LandXML, design review
 - GPL-3.0-only license
 
+[0.4.2]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/mf4633/opencad-hydrocomplete-plugin/compare/v0.2.0...v0.3.0

@@ -177,4 +177,53 @@ mod tests {
         assert!(q > 0.0);
         let _ = std::fs::remove_file(&path);
     }
+
+    #[test]
+    fn export_pdf_with_pro_bypass() {
+        use acadrust::types::Vector3;
+        use acadrust::{Circle, EntityType, Handle, Line};
+        use stormsewer::network::NodeKind;
+
+        use crate::data::{pipe_xdata, structure_xdata};
+
+        std::env::set_var("HYDROCOMPLETE_PRO", "1");
+
+        let mut s1 = EntityType::Circle(Circle {
+            center: Vector3::new(0.0, 0.0, 0.0),
+            radius: 3.0,
+            ..Default::default()
+        });
+        s1.common_mut().handle = Handle::new(1);
+        s1.common_mut()
+            .extended_data
+            .add_record(structure_xdata(NodeKind::Inlet, 104.0, 110.0, 2.0, 0.75));
+
+        let mut s2 = EntityType::Circle(Circle {
+            center: Vector3::new(100.0, 0.0, 0.0),
+            radius: 3.0,
+            ..Default::default()
+        });
+        s2.common_mut().handle = Handle::new(2);
+        s2.common_mut()
+            .extended_data
+            .add_record(structure_xdata(NodeKind::Outfall, 100.0, 106.0, 0.0, 0.0));
+
+        let mut p = EntityType::Line(Line::from_points(
+            Vector3::new(0.0, 0.0, 0.0),
+            Vector3::new(100.0, 0.0, 0.0),
+        ));
+        p.common_mut().handle = Handle::new(3);
+        p.common_mut()
+            .extended_data
+            .add_record(pipe_xdata(1.25, 0.013, Handle::new(1), Handle::new(2)));
+
+        let ents = vec![s1, s2, p];
+        let params = StormAnalysisParams::municipal();
+        let (path, q) =
+            export_hydraulic_report_pdf(ents.iter(), &params, "pdf-integration").unwrap();
+        assert!(path.extension().and_then(|e| e.to_str()) == Some("pdf"));
+        assert!(std::fs::metadata(&path).unwrap().len() > 500);
+        assert!(q > 0.0);
+        let _ = std::fs::remove_file(&path);
+    }
 }

@@ -97,6 +97,7 @@ impl CadModule for HydroCompleteModule {
                     RibbonItem::LargeTool(tool("HC_JUNCTION", "Junction", "◎")),
                     RibbonItem::LargeTool(tool("HC_OUTFALL", "Outfall", "▽")),
                     RibbonItem::LargeTool(tool("HC_PIPE", "Pipe\nRun", "╱")),
+                    RibbonItem::Tool(tool("HC_PIPE_ARGS", "Pipe\nArgs", "⌥")),
                     RibbonItem::Tool(file_tool(
                         "HC_LANDXML_IMPORT",
                         "Import\nLandXML",
@@ -121,6 +122,7 @@ impl CadModule for HydroCompleteModule {
                     RibbonItem::Tool(tool("HC_MULTIRP", "Multi-RP", "≋")),
                     RibbonItem::Tool(tool("HC_REVIEW", "Design\nReview", "✓")),
                     RibbonItem::Tool(tool("HC_REPORT", "HTML\nReport", "📋")),
+                    RibbonItem::Tool(tool("HC_REPORT_PDF", "PDF\nReport", "📄")),
                 ],
             },
             RibbonGroup {
