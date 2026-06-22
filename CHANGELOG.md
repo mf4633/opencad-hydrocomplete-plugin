@@ -4,6 +4,12 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.5.1] - 2026-06-22
+
+### Fixed
+
+- Release `plugin.toml` version now matches crate tag (v0.4.5 shipped with `0.4.4` in the release asset)
+
 ## [0.4.5] - 2026-06-22
 
 ### Added
