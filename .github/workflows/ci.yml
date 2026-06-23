@@ -20,9 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Optional: DAG editor tests skip when this checkout is unavailable (private/local crate).
       - uses: actions/checkout@v4
-        continue-on-error: true
         with:
           repository: mf4633/hydrocomplete-dag
           path: _dag
