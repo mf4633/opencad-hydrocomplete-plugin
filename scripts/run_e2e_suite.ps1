@@ -1,8 +1,8 @@
 # HydroComplete end-to-end test suite: Rust, OCS automation, 24-145, Playwright, Civil 3D.
 param(
     [string]$Root = (Split-Path $PSScriptRoot -Parent),
-    [string]$Ocs = 'C:\Users\michael.flynn\Downloads\OpenCADStudio-v0.6.0-windows-x86_64-portable.exe',
-    [string]$Civil3dRoot = (Join-Path (Split-Path $Root -Parent) 'hydrocomplete-civil3d'),
+    [string]$Ocs = $(if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE } else { 'C:\Users\michael.flynn\Downloads\OpenCADStudio-v0.6.0-windows-x86_64-portable.exe' }),
+    [string]$Civil3dRoot = $(if ($env:HC_CIVIL3D_ROOT) { $env:HC_CIVIL3D_ROOT } else { (Join-Path (Split-Path $Root -Parent) 'hydrocomplete-civil3d') }),
     [switch]$SkipRust,
     [switch]$SkipBuild,
     [switch]$SkipOcs,
@@ -134,6 +134,7 @@ if (-not $SkipCivil3d -and (Test-Path (Join-Path $Civil3dRoot 'HydroComplete.Civ
     if (-not $SkipCivil3dGui) {
         $acadExe = 'C:\Program Files\Autodesk\AutoCAD 2026\acad.exe'
         if (-not (Test-Path $acadExe)) {
+            Write-Host 'NOTE: Civil 3D GUI smoke needs AutoCAD 2026 (self-hosted runner label: civil3d). GitHub-hosted runners skip this step.'
             Invoke-E2EStep 'Civil 3D GUI parity smoke (COM)' { throw 'AutoCAD 2026 not installed' } -Optional
         }
         else {

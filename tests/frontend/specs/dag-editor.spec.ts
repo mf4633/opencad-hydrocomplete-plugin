@@ -19,7 +19,8 @@ test.describe('HydroComplete DAG model builder', () => {
     const dagPath = resolveDagIndex();
     test.skip(!dagPath, 'DAG index.html not found (hydrocomplete-dag or Civil 3D bundle)');
 
-    await page.goto(dagPageUrl(dagPath!, false));
+    const useWasmServer = Boolean(devDagWww);
+    await page.goto(dagPageUrl(dagPath!, useWasmServer));
     await page.waitForLoadState('domcontentloaded');
 
     await expect(page.locator('#toolbar h1')).toContainText('Model Builder');
@@ -27,6 +28,12 @@ test.describe('HydroComplete DAG model builder', () => {
     await expect(page.locator('#palette')).toBeVisible();
     await expect(page.locator('#palette-search')).toBeVisible();
     await expect(page.locator('.tbtn.run')).toBeVisible();
+
+    if (useWasmServer) {
+      await page.waitForFunction(() => window.__editor != null);
+      await expect(page.locator('#palette .pnode')).not.toHaveCount(0);
+      await expect(page.locator('#palette .cat-hdr')).not.toHaveCount(0);
+    }
   });
 
   test('WASM palette_json exposes hydrology node catalog', async ({ page }) => {

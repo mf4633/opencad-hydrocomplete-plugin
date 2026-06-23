@@ -29,6 +29,7 @@ mod state;
 mod style;
 mod validation;
 mod write_labels;
+mod xdata_persist;
 
 use ocs_plugin_api::host::{BuiltinPlugin, HostApi};
 use ocs_plugin_api::manifest::PluginManifest;

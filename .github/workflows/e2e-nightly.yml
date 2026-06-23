@@ -1,0 +1,174 @@
+# Nightly end-to-end validation for HydroComplete (OCS automation + Playwright + Civil 3D).
+#
+# Limitations on GitHub-hosted windows-latest:
+#   - Open CAD Studio portable is downloaded each run (cached).
+#   - Civil 3D / AutoCAD 2026 is NOT installed — dotnet net8 plugin build and GUI smoke skip or fail gracefully.
+#   - 24-145 DWG workflow is optional (skipped when fixture DWG is absent).
+#
+# Civil 3D GUI parity smoke requires a self-hosted Windows runner with AutoCAD 2026:
+#   runs-on: [self-hosted, windows, civil3d]
+#   See hydrocomplete-civil3d/scripts/setup-self-hosted-runner.md
+#
+# Manual trigger: Actions → "E2E Nightly" → Run workflow
+#   - run_civil3d_gui: enable to queue civil3d-gui-smoke on a self-hosted runner.
+
+name: E2E Nightly
+
+on:
+  schedule:
+    # 09:00 UTC daily
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      run_civil3d_gui:
+        description: 'Run Civil 3D GUI parity smoke (self-hosted runner with AutoCAD 2026)'
+        type: boolean
+        default: false
+      e2e_mode:
+        description: 'OCS suite mode (OcsFrontend = nightly default; Full = attempt everything)'
+        type: choice
+        options:
+          - OcsFrontend
+          - Full
+        default: OcsFrontend
+      ocs_version:
+        description: 'Open CAD Studio release tag'
+        type: string
+        default: v0.6.0
+
+env:
+  OCS_VERSION: ${{ github.event.inputs.ocs_version || 'v0.6.0' }}
+  OCS_EXE_NAME: OpenCADStudio-${{ github.event.inputs.ocs_version || 'v0.6.0' }}-windows-x86_64-portable.exe
+
+jobs:
+  ocs-e2e-frontend:
+    name: OCS E2E + Playwright
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Checkout hydrocomplete-dag
+        uses: actions/checkout@v4
+        with:
+          repository: mf4633/hydrocomplete-dag
+          ref: master
+          path: _dag
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cache OCS portable
+        uses: actions/cache@v4
+        id: ocs-cache
+        with:
+          path: ${{ runner.temp }}/${{ env.OCS_EXE_NAME }}
+          key: ocs-portable-${{ env.OCS_VERSION }}-windows-x86_64
+
+      - name: Download Open CAD Studio portable
+        if: steps.ocs-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $tag = $env:OCS_VERSION
+          $asset = "OpenCADStudio-$tag-windows-x86_64-portable.exe"
+          $url = "https://github.com/HakanSeven12/OpenCADStudio/releases/download/$tag/$asset"
+          $dest = Join-Path $env:RUNNER_TEMP $asset
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
+          if (-not (Test-Path $dest)) { throw "OCS download failed: $dest" }
+          Write-Host "OCS portable: $dest ($((Get-Item $dest).Length) bytes)"
+
+      - name: Run nightly E2E (OCS + frontend)
+        shell: pwsh
+        env:
+          HC_OCS_EXE: ${{ runner.temp }}/${{ env.OCS_EXE_NAME }}
+          E2E_MODE: ${{ github.event.inputs.e2e_mode || 'OcsFrontend' }}
+        run: ./scripts/run_nightly_e2e.ps1 -Mode $env:E2E_MODE
+
+  civil3d-dotnet:
+    name: Civil 3D dotnet CI
+    runs-on: windows-latest
+    timeout-minutes: 60
+    # net8 Civil 3D plugin build needs AcMgd.dll; engine tests + net48 build should still run.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout hydrocomplete-civil3d
+        uses: actions/checkout@v4
+        with:
+          repository: mf4633/hydrocomplete-civil3d
+          ref: master
+          path: hydrocomplete-civil3d
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout hydrocomplete-dag (sibling for WASM staging)
+        uses: actions/checkout@v4
+        with:
+          repository: mf4633/hydrocomplete-dag
+          ref: master
+          path: hydrocomplete-dag
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            7.0.x
+
+      - name: Install Rust + wasm-pack (DAG bundle)
+        shell: pwsh
+        run: |
+          rustup target add wasm32-unknown-unknown
+          if (-not (Get-Command wasm-pack -ErrorAction SilentlyContinue)) {
+            cargo install wasm-pack --locked
+          }
+
+      - name: Run Civil 3D CI script
+        shell: pwsh
+        working-directory: hydrocomplete-civil3d
+        run: ./scripts/ci.ps1 -Configuration Release
+
+  civil3d-gui-smoke:
+    name: Civil 3D GUI parity smoke
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_civil3d_gui == 'true' }}
+    runs-on: [self-hosted, windows, civil3d]
+    timeout-minutes: 45
+    # Hosted runners lack AutoCAD; this job is dispatch-only on a labeled self-hosted runner.
+    continue-on-error: true
+
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Checkout hydrocomplete-civil3d (sibling path)
+        uses: actions/checkout@v4
+        with:
+          repository: mf4633/hydrocomplete-civil3d
+          ref: master
+          path: ../hydrocomplete-civil3d
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify AutoCAD 2026
+        shell: pwsh
+        run: |
+          $acad = 'C:\Program Files\Autodesk\AutoCAD 2026\acad.exe'
+          if (-not (Test-Path $acad)) {
+            Write-Host '::warning::AutoCAD 2026 not found — GUI smoke will SKIP. Install Civil 3D / AutoCAD 2026 on this runner.'
+          } else {
+            Write-Host "AutoCAD 2026: $acad"
+          }
+
+      - name: Run Civil 3D GUI E2E smoke
+        shell: pwsh
+        env:
+          HC_CIVIL3D_ROOT: ${{ github.workspace }}/../hydrocomplete-civil3d
+        run: ./scripts/run_nightly_e2e.ps1 -Mode Civil3dGui

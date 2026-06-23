@@ -1,3 +1,4 @@
+# PR/push CI: fast Rust + Playwright only. Full OCS + Civil 3D nightly: .github/workflows/e2e-nightly.yml
 name: ci
 
 on:

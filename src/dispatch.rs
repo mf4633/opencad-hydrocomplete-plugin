@@ -69,7 +69,10 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
         return false;
     }
 
-    match cmd {
+    // DWG open leaves XDATA in raw blobs only; hydrate before reading entities.
+    crate::xdata_persist::hydrate_host(host);
+
+    let handled = match cmd {
         "HC_VALIDATE" => {
             // Integrity checks (XDATA well-formed, handles resolve) ...
             let mut report = validation::validate_entities(entities(host));
@@ -806,5 +809,11 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             true
         }
         _ => false,
+    };
+
+    // Encode records → raw_dwg_eed + APPIDs so OCS DWG save retains HC metadata.
+    if handled {
+        crate::xdata_persist::commit_host(host);
     }
+    handled
 }

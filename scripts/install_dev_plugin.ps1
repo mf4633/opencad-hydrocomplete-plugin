@@ -18,4 +18,5 @@ Pop-Location
 New-Item -ItemType Directory -Force -Path $PluginDir | Out-Null
 Copy-Item -Force (Join-Path $Root "target\debug\opencad_hydrocomplete_plugin.dll") `
     (Join-Path $PluginDir "opencad.hydrocomplete-windows-x86_64.dll")
-Write-Host "Installed debug plugin DLL"
+Copy-Item -Force (Join-Path $Root "plugin.toml") (Join-Path $PluginDir "plugin.toml")
+Write-Host "Installed debug plugin DLL + plugin.toml"

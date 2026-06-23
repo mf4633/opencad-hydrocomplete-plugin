@@ -4,6 +4,20 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.11] - 2026-06-23
+
+### Added
+
+- **DWG XDATA persistence** — `xdata_persist` syncs `records` ↔ `raw_dwg_eed` + APPID registration; structures survive save/reopen
+- `scripts/test_xdata_save_reopen.ps1` — OCS save/reopen regression for 24-145 Civil import
+- **E2E nightly workflow** — `.github/workflows/e2e-nightly.yml` + `scripts/run_nightly_e2e.ps1`
+- Playwright DAG palette DOM assertions (`.pnode` / `.cat-hdr` after TDZ fix)
+
+### Fixed
+
+- `run_24145_full_workflow.ps1` — rejects stale HTML/PDF; verifies `%PDF` magic and size > 500 bytes
+- `install_dev_plugin.ps1` copies `plugin.toml` for fresh CI runners
+
 ## [0.4.10] - 2026-06-23
 
 ### Added

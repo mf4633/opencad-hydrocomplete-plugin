@@ -101,7 +101,46 @@ $hydroJson = python @pyArgs | ConvertFrom-Json
 Write-Host ("Worksheet hydrology: {0} structures, {1} inlets, {2} HC_EDIT cmds" -f $hydroJson.structures, $hydroJson.inlets, $hydroJson.edits.Count)
 $hydroJson | ConvertTo-Json -Depth 6 | Out-File (Join-Path $WorkDir "hydrology-plan.json") -Encoding utf8
 
+function Get-NewReportFile {
+    param(
+        [System.IO.FileInfo[]]$After,
+        [System.IO.FileInfo[]]$Before,
+        [datetime]$Since,
+        [string]$Label
+    )
+    $maxBefore = ($Before | Measure-Object -Property LastWriteTime -Maximum).Maximum
+    $cutoff = if ($maxBefore) { $maxBefore } else { $Since }
+    $newByCompare = @(Compare-Object $Before $After -PassThru |
+        Where-Object { $_.SideIndicator -eq '=>' -and $_.LastWriteTime -gt $cutoff } |
+        Sort-Object LastWriteTime -Descending)
+    if ($newByCompare.Count -gt 0) { return $newByCompare[0] }
+    $updated = @($After | Where-Object { $_.LastWriteTime -gt $cutoff } |
+        Sort-Object LastWriteTime -Descending)
+    if ($updated.Count -gt 0) { return $updated[0] }
+    throw "$Label did not produce a new file in $ReportDir (cutoff: $cutoff)"
+}
+
+function Assert-PdfReport {
+    param([System.IO.FileInfo]$Pdf)
+    if (-not $Pdf -or -not (Test-Path -LiteralPath $Pdf.FullName)) {
+        throw "HC_REPORT_PDF: PDF file missing"
+    }
+    if ($Pdf.Length -le 500) {
+        throw "HC_REPORT_PDF: PDF too small ($($Pdf.Length) bytes): $($Pdf.FullName)"
+    }
+    $bytes = [System.IO.File]::ReadAllBytes($Pdf.FullName)
+    if ($bytes.Length -lt 4) {
+        throw "HC_REPORT_PDF: PDF unreadable: $($Pdf.FullName)"
+    }
+    $magic = [System.Text.Encoding]::ASCII.GetString($bytes, 0, 4)
+    if ($magic -ne '%PDF') {
+        throw "HC_REPORT_PDF: invalid PDF magic bytes (got '$magic'): $($Pdf.FullName)"
+    }
+}
+
+$workflowStart = Get-Date
 $beforeReports = @(Get-ChildItem $ReportDir -Filter "report-tab-*.html" -ErrorAction SilentlyContinue)
+$beforePdf = @(Get-ChildItem $ReportDir -Filter "report-tab-*.pdf" -ErrorAction SilentlyContinue)
 $cmds = @($openJson, '{"op":"run","cmd":"HC_CIVIL_IMPORT force"}')
 foreach ($edit in $hydroJson.edits) {
     $cmds += '{"op":"run","cmd":"' + $edit + '"}'
@@ -124,26 +163,21 @@ foreach ($line in @($out)) {
 
 Start-Sleep -Milliseconds 1200
 $afterReports = @(Get-ChildItem $ReportDir -Filter "report-tab-*.html" -ErrorAction SilentlyContinue)
-$newReport = Compare-Object $beforeReports $afterReports -PassThru |
-    Where-Object { $_.SideIndicator -eq '=>' } | Select-Object -First 1
-if (-not $newReport) {
-    $newReport = $afterReports | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-}
-$pdf = Get-ChildItem $ReportDir -Filter "report-tab-*.pdf" -ErrorAction SilentlyContinue |
-    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$newReport = Get-NewReportFile -After $afterReports -Before $beforeReports -Since $workflowStart -Label "HC_REPORT"
 
-if ($newReport) {
-    $c = Get-Content $newReport.FullName -Raw -Encoding UTF8
-    if ($c -match 'system total = <strong>([^<]+)') {
-        Write-Host ("Design Q: {0}" -f $matches[1].Trim())
-    }
-    Write-Host "Report: $($newReport.FullName)"
-    Start-Process $newReport.FullName
+$c = Get-Content $newReport.FullName -Raw -Encoding UTF8
+if ($c -match 'system total = <strong>([^<]+)') {
+    Write-Host ("Design Q: {0}" -f $matches[1].Trim())
 }
-if ($pdf) {
-    Write-Host "PDF:    $($pdf.FullName)"
-    Start-Process $pdf.FullName
-}
+Write-Host "Report: $($newReport.FullName) ($($newReport.Length) bytes)"
+
+$afterPdf = @(Get-ChildItem $ReportDir -Filter "report-tab-*.pdf" -ErrorAction SilentlyContinue)
+$pdf = Get-NewReportFile -After $afterPdf -Before $beforePdf -Since $workflowStart -Label "HC_REPORT_PDF"
+Assert-PdfReport -Pdf $pdf
+Write-Host "PDF:    $($pdf.FullName) ($($pdf.Length) bytes)"
+
+Start-Process $newReport.FullName
+Start-Process $pdf.FullName
 Write-Host "Saved:  $OutDwg"
 Write-Host "Plan:   $(Join-Path $WorkDir 'hydrology-plan.json')"
 Write-Host "24-145 FULL WORKFLOW COMPLETE"
