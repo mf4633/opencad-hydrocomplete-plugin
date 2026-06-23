@@ -39,8 +39,8 @@ fn formula_step(title: &str, equation_latex: &str, result_latex: &str) -> String
     format!(
         r#"<div class="hc-formula-step">
 <div class="hc-formula-title">{title}</div>
-<div class="hc-formula-equation"><code class="hc-tex-fallback">{eq}</code></div>
-<div class="hc-formula-result"><code class="hc-tex-fallback">{res}</code></div>
+<div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">{eq}</code></div>
+<div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">{res}</code></div>
 </div>"#,
         title = esc(title),
         eq = esc(equation_latex),
@@ -60,8 +60,13 @@ th{background:#f0f4f8;} tr.surcharged{background:#ffe6e6;} tr.flooding{backgroun
 .hc-formula-panel{margin:12px 0;}
 .hc-formula-step{border:1px solid #e0e6ed;border-radius:6px;padding:10px 12px;margin:8px 0;background:#fafbfc;}
 .hc-formula-title{font-weight:600;font-size:0.95rem;margin-bottom:6px;}
-.hc-formula-equation,.hc-formula-result{margin:4px 0;}
+.hc-formula-equation,.hc-formula-result{margin:6px 0;padding:6px 8px;border-radius:4px;}
+.hc-formula-equation{background:#f4f6f8;border-left:3px solid #7a8a9a;}
+.hc-formula-result{background:#e8f4ec;border-left:3px solid #2e7d4f;}
+.hc-formula-label{display:block;font-size:0.72rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#5a6570;margin-bottom:4px;}
+.hc-formula-result .hc-formula-label{color:#2e7d4f;}
 .hc-tex-fallback{font-family:Consolas,monospace;font-size:0.9rem;}
+.hc-formula-equation .katex-display,.hc-formula-result .katex-display{margin:0;}
 .meta{color:#555;font-size:0.9rem;}
 .pass{color:#0a7a2f;font-weight:600;} .failtxt{color:#b00020;font-weight:600;}
 </style>"#,
@@ -76,7 +81,7 @@ const KATEX_REHYDRATE: &str = r#"<script>
     try {
       var span = document.createElement('span');
       katex.render(latex, span, {
-        displayMode: el.closest('.hc-formula-equation, .hc-formula-result') !== null,
+        displayMode: el.closest('.hc-formula-equation') !== null,
         throwOnError: false,
         strict: false
       });
@@ -211,7 +216,7 @@ fn formula_panel(net: &Network, a: &Analysis, params: &StormAnalysisParams) -> S
                 &format!("Example: pipe {}", p.id),
                 r"Q = C \cdot i \cdot A",
                 &format!(
-                    r"Q_{{{pid}}} = {q:.2}\ \text{{cfs}},\ i = {i:.2}\ \text{{in/hr}},\ t_c = {tc:.1}\ \text{{min}}",
+                    r"Q_{{\text{{{pid}}}}} = {q:.2}\,\mathrm{{cfs}},\ i = {i:.2}\,\mathrm{{in/hr}},\ t_c = {tc:.1}\,\mathrm{{min}}",
                     pid = esc(&p.id),
                     q = p.design_q,
                     i = p.intensity,

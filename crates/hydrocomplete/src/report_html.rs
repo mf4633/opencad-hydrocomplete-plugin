@@ -47,18 +47,41 @@ fn trim(s: &str, max: usize) -> String {
     }
 }
 
-fn escape_latex_identifier(label: &str) -> String {
-    label
-        .replace('\\', "\\\\")
-        .replace('{', "\\{")
-        .replace('}', "\\}")
-        .replace('_', "\\_")
-}
-
 fn escape_latex_text(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('{', "\\{")
         .replace('}', "\\}")
+}
+
+fn format_label_latex(label: &str) -> String {
+    if label.is_empty() {
+        return "x".into();
+    }
+    if let Some((base, sub)) = label.split_once('_') {
+        let sub_latex = if sub.len() == 1 {
+            escape_latex_text(sub)
+        } else {
+            format!(r"\text{{{}}}", escape_latex_text(sub))
+        };
+        format!(r"{}_{{{}}}", escape_latex_text(base), sub_latex)
+    } else {
+        escape_latex_text(label)
+    }
+}
+
+fn format_units_latex(units: &str) -> String {
+    if units.is_empty() {
+        return String::new();
+    }
+    if let Some((base, exp)) = units.split_once('^') {
+        format!(
+            r"\,\mathrm{{{}}}^{{{}}}",
+            escape_latex_text(base),
+            escape_latex_text(exp)
+        )
+    } else {
+        format!(r"\,\mathrm{{{}}}", escape_latex_text(units))
+    }
 }
 
 fn try_map_formula_to_latex(formula: &str) -> Option<&'static str> {
@@ -96,16 +119,11 @@ impl CalcStep {
 }
 
 fn format_result_latex(step: &CalcStep) -> String {
-    let units = if step.units.is_empty() {
-        String::new()
-    } else {
-        format!("\\ \\text{{{}}}", escape_latex_text(&step.units))
-    };
     format!(
         "{} = {:.4}{}",
-        escape_latex_identifier(&step.label),
+        format_label_latex(&step.label),
         step.value,
-        units
+        format_units_latex(&step.units)
     )
 }
 
@@ -123,11 +141,11 @@ fn render_calc_step_html(step: &CalcStep) -> String {
     ));
     if let Some(eq) = latex {
         block.push_str(&format!(
-            r#"<div class="hc-formula-equation"><code class="hc-tex-fallback">{}</code></div>"#,
+            r#"<div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">{}</code></div>"#,
             esc(eq)
         ));
         block.push_str(&format!(
-            r#"<div class="hc-formula-result"><code class="hc-tex-fallback">{}</code></div>"#,
+            r#"<div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">{}</code></div>"#,
             esc(&result_latex)
         ));
     } else {
@@ -189,9 +207,14 @@ th{background:#f0f4f8;} tr.surcharged{background:#ffe6e6;} tr.capacity-na{backgr
 .hc-formula-panel{margin:12px 0;}
 .hc-formula-step{border:1px solid #e0e6ed;border-radius:6px;padding:10px 12px;margin:8px 0;background:#fafbfc;}
 .hc-formula-title{font-weight:600;font-size:0.95rem;margin-bottom:6px;}
-.hc-formula-equation,.hc-formula-result{margin:4px 0;}
+.hc-formula-equation,.hc-formula-result{margin:6px 0;padding:6px 8px;border-radius:4px;}
+.hc-formula-equation{background:#f4f6f8;border-left:3px solid #7a8a9a;}
+.hc-formula-result{background:#e8f4ec;border-left:3px solid #2e7d4f;}
+.hc-formula-label{display:block;font-size:0.72rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#5a6570;margin-bottom:4px;}
+.hc-formula-result .hc-formula-label{color:#2e7d4f;}
 .hc-formula-desc{font-family:Consolas,monospace;font-size:0.85rem;color:#444;}
 .hc-tex-fallback{font-family:Consolas,monospace;font-size:0.9rem;}
+.hc-formula-equation .katex-display,.hc-formula-result .katex-display{margin:0;}
 .pass{color:#0a7a2f;font-weight:600;} .failtxt{color:#b00020;font-weight:600;}
 </style>"#,
     );
@@ -205,7 +228,7 @@ const KATEX_REHYDRATION: &str = r#"<script>
     try {
       var span = document.createElement('span');
       katex.render(latex, span, {
-        displayMode: el.closest('.hc-formula-equation, .hc-formula-result') !== null,
+        displayMode: el.closest('.hc-formula-equation') !== null,
         throwOnError: false,
         strict: false
       });
@@ -604,6 +627,19 @@ mod tests {
     }
 
     #[test]
+    fn result_latex_formats_units_and_subscripts() {
+        let step = CalcStep::new("Q_full", "pi*D^2/4", 6.4772, "cfs");
+        let latex = format_result_latex(&step);
+        assert!(latex.contains(r"Q_{\text{full}}"));
+        assert!(latex.contains(r"\mathrm{cfs}"));
+        assert!(!latex.contains(r"\text{ft^2}"));
+
+        let area = CalcStep::new("A", "pi*D^2/4", 1.2272, "ft^2");
+        let area_latex = format_result_latex(&area);
+        assert!(area_latex.contains(r"\mathrm{ft}^{2}"));
+    }
+
+    #[test]
     fn html_has_manning_hgl_capacity_sections() {
         let (net, a) = sample();
         let html = format_hydraulic_report_html(
@@ -621,6 +657,11 @@ mod tests {
         assert!(html.contains("Design Capacity Check"));
         assert!(html.contains("Steady HGL Profile"));
         assert!(html.contains("hc-formula-panel"));
+        assert!(html.contains("hc-formula-label"));
+        assert!(html.contains("Equation</span>"));
+        assert!(html.contains("Result</span>"));
+        assert!(html.contains(r"\mathrm{ft}^{2}"));
+        assert!(!html.contains(r"\text{ft^2}"));
         assert!(html.contains("P1"));
     }
 }
