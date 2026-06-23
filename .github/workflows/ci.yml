@@ -23,6 +23,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: mf4633/hydrocomplete-dag
+          ref: master
           path: _dag
           token: ${{ secrets.GITHUB_TOKEN }}
 
