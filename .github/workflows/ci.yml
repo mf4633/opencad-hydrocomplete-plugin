@@ -7,10 +7,30 @@ on:
     branches: [master, main]
 
 jobs:
-  test:
+  rust-linux:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo test --workspace --all-features
       - run: cargo build --release -p opencad-hydrocomplete-plugin
+
+  windows-e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: mf4633/hydrocomplete-dag
+          path: _dag
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Rust + Playwright CI tests
+        shell: pwsh
+        run: ./scripts/run_ci_tests.ps1

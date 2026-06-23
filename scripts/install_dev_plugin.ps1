@@ -7,10 +7,11 @@ $PluginDir = Join-Path $env:APPDATA "OpenCADStudio\plugins\opencad.hydrocomplete
 
 Write-Host "Building debug plugin (dev Pro bypass)..."
 Push-Location $Root
+$prevEap = $ErrorActionPreference
 $ErrorActionPreference = 'Continue'
-cargo build -p opencad-hydrocomplete-plugin 2>&1 | Out-Host
-$buildExit = $LASTEXITCODE
-$ErrorActionPreference = 'Stop'
+& cargo build -p opencad-hydrocomplete-plugin 2>&1 | Out-Host
+$buildExit = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } else { 1 }
+$ErrorActionPreference = $prevEap
 if ($buildExit -ne 0) { throw "cargo build failed" }
 Pop-Location
 

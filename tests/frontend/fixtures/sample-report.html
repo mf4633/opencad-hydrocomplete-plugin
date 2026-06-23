@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<title>HydroComplete Report</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css"><script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script><script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/contrib/auto-render.min.js"></script><style>
+body{font-family:Segoe UI,Arial,sans-serif;margin:24px;color:#1a1a1a;}
+h1{font-size:1.4rem;} h2{font-size:1.15rem;margin-top:28px;} h3{font-size:1rem;margin-top:16px;}
+h4{font-size:0.95rem;margin-top:12px;} h5{font-size:0.9rem;margin-top:8px;}
+table{border-collapse:collapse;width:100%;margin:16px 0;}
+th,td{border:1px solid #ccc;padding:6px 8px;text-align:left;font-size:0.9rem;}
+th{background:#f0f4f8;} tr.surcharged{background:#ffe6e6;} tr.capacity-na{background:#fff8e6;}
+.disclaimer{margin-top:24px;padding:12px;background:#fff8e6;border:1px solid #e6c200;}
+.hc-formula-panel{margin:12px 0;}
+.hc-formula-step{border:1px solid #e0e6ed;border-radius:6px;padding:10px 12px;margin:8px 0;background:#fafbfc;}
+.hc-formula-title{font-weight:600;font-size:0.95rem;margin-bottom:6px;}
+.hc-formula-equation,.hc-formula-result{margin:6px 0;padding:6px 8px;border-radius:4px;}
+.hc-formula-equation{background:#f4f6f8;border-left:3px solid #7a8a9a;}
+.hc-formula-result{background:#e8f4ec;border-left:3px solid #2e7d4f;}
+.hc-formula-label{display:block;font-size:0.72rem;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;color:#5a6570;margin-bottom:4px;}
+.hc-formula-result .hc-formula-label{color:#2e7d4f;}
+.hc-formula-desc{font-family:Consolas,monospace;font-size:0.85rem;color:#444;}
+.hc-tex-fallback{font-family:Consolas,monospace;font-size:0.9rem;}
+.hc-formula-equation .katex-display,.hc-formula-result .katex-display{margin:0;}
+.pass{color:#0a7a2f;font-weight:600;} .failtxt{color:#b00020;font-weight:600;}
+</style></head><body>
+<h1>HydroComplete — Hydraulic Report</h1>
+<p>Drawing: <strong>frontend-fixture</strong><br/>Generated: frontend-fixture<br/>RP 10yr  IDF i=a/(t+b)^c  a=60.0 b=10.0 c=0.80  tailwater=free  minTc=10min  junctionK=0.50  V=2.0-10.0 ft/s  maxFull=85%  inlet=grate on grade</p>
+<h2>Manning Pipe Capacity</h2>
+<p>Method: Manning full-barrel capacity for circular pipes (US customary, n=0.013 default).</p>
+<table><thead><tr>
+<th>Network / Pipe</th><th>Dia (ft)</th><th>Slope</th><th>Q<sub>full</sub> (cfs)</th><th>V<sub>full</sub> (fps)</th>
+</tr></thead><tbody>
+<tr><td>Network/P1</td><td>1.25</td><td>0.0200</td><td>9.16</td><td>7.46</td></tr>
+</tbody></table>
+<h3>Manning calculation steps</h3>
+<h4>Network/P1</h4><div class="steps">
+<div class="hc-formula-panel"><div class="hc-formula-step" data-label="A"><div class="hc-formula-title">A</div><div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">A = \frac{\pi D^2}{4}</code></div><div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">A = 1.2272\,\mathrm{ft}^{2}</code></div></div><div class="hc-formula-step" data-label="R"><div class="hc-formula-title">R</div><div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">R = \frac{D}{4}</code></div><div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">R = 0.3125\,\mathrm{ft}</code></div></div><div class="hc-formula-step" data-label="Q_full"><div class="hc-formula-title">Q_full</div><div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">Q = \frac{1.486}{n} A R^{2/3} S^{1/2}</code></div><div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">Q_{\text{full}} = 9.1601\,\mathrm{cfs}</code></div></div><div class="hc-formula-step" data-label="V_full"><div class="hc-formula-title">V_full</div><div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">V = \frac{Q_{\text{full}}}{A_{\text{full}}}</code></div><div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">V_{\text{full}} = 7.4643\,\mathrm{ft/s}</code></div></div><div class="hc-formula-step" data-label="n"><div class="hc-formula-title">n</div><div class="hc-formula-desc">n = 0.0130 </div><div class="hc-formula-desc">Manning roughness</div></div><div class="hc-formula-step" data-label="S"><div class="hc-formula-title">S</div><div class="hc-formula-desc">S = 0.0200 ft/ft</div><div class="hc-formula-desc">Pipe slope</div></div></div></div>
+<h2>Design Capacity Check</h2>
+<p>Method: Manning normal depth at per-pipe routed catchment Q (system total = <strong>3.54 cfs</strong>). Surcharge when Q exceeds peak open-channel capacity (d/D &rarr; 1.0). Zero or adverse slope: capacity is N/A (not a surcharge). Flat inverts use minimum assumed slope for Manning.</p>
+<table><thead><tr>
+<th>Network / Pipe</th><th>Q<sub>full</sub> (cfs)</th><th>Q<sub>des</sub> (cfs)</th><th>Q<sub>des</sub>/Q<sub>full</sub></th><th>d/D</th><th>SURCH</th>
+</tr></thead><tbody>
+<tr><td>Network/P1</td><td>9.2</td><td>3.5</td><td>0.39</td><td>0.43</td><td></td></tr>
+</tbody></table>
+<h2>Steady HGL Profile</h2>
+<p>Method: steady uniform-flow stepping downstream from headwater HGL using Manning normal depth per reach (partial-flow A and R) with HEC-22 junction/exit losses. (S<sub>f</sub> = [n&middot;Q/(1.486&middot;A&middot;R<sup>2/3</sup>)]<sup>2</sup>, h<sub>f</sub> = S<sub>f</sub>&middot;L, h<sub>m</sub> = K&middot;Vh). design Q = <strong>3.54 cfs</strong>.</p>
+<h3>Network</h3><p>Outfall tailwater HGL = 100.00 ft (profile stepped upstream from the outfall, adding friction + HEC-22 minor losses).</p>
+<table><thead><tr>
+<th>Pipe</th><th>d/D</th><th>h<sub>f</sub> (ft)</th><th>h<sub>m</sub> (ft)</th><th>HGL<sub>US</sub> (ft)</th><th>HGL<sub>DS</sub> (ft)</th><th>SURCH</th>
+</tr></thead><tbody>
+<tr><td>P1</td><td>0.43</td><td>4.54</td><td>0.38</td><td>104.92</td><td>100.00</td><td></td></tr>
+</tbody></table>
+<h4>HGL calculation steps</h4>
+<h5>P1</h5><div class="steps">
+<div class="hc-formula-panel"><div class="hc-formula-step" data-label="Q"><div class="hc-formula-title">Q</div><div class="hc-formula-desc">Q = 3.5425 cfs</div><div class="hc-formula-desc">Design flow</div></div><div class="hc-formula-step" data-label="S_f"><div class="hc-formula-title">S_f</div><div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">S_f = \left[\frac{n Q}{1.486\, A\, R^{2/3}}\right]^2</code></div><div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">S_{f} = 0.0200\,\mathrm{ft/ft}</code></div></div><div class="hc-formula-step" data-label="h_f"><div class="hc-formula-title">h_f</div><div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">h_f = S_f L</code></div><div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">h_{f} = 4.5395\,\mathrm{ft}</code></div></div><div class="hc-formula-step" data-label="h_m"><div class="hc-formula-title">h_m</div><div class="hc-formula-equation"><span class="hc-formula-label">Equation</span><code class="hc-tex-fallback">h_m = K \cdot V_h</code></div><div class="hc-formula-result"><span class="hc-formula-label">Result</span><code class="hc-tex-fallback">h_{m} = 0.3789\,\mathrm{ft}</code></div></div><div class="hc-formula-step" data-label="K"><div class="hc-formula-title">K</div><div class="hc-formula-desc">K = 0.5000 </div><div class="hc-formula-desc">Junction loss coefficient</div></div></div></div>
+<div class="disclaimer">
+<strong>Disclaimer:</strong> This report is generated by HydroComplete for preliminary storm-sewer review. Verify all inputs (diameter, slope, roughness, design flow) against the engineer's design basis. Not a substitute for licensed professional judgment or jurisdiction-specific design standards.
+</div>
+<script>
+(function rehydrateKaTeX() {
+  if (typeof katex === 'undefined') return setTimeout(rehydrateKaTeX, 50);
+  document.querySelectorAll('code.hc-tex-fallback').forEach(function(el) {
+    var latex = el.textContent;
+    try {
+      var span = document.createElement('span');
+      katex.render(latex, span, {
+        displayMode: el.closest('.hc-formula-equation') !== null,
+        throwOnError: false,
+        strict: false
+      });
+      el.replaceWith(span);
+    } catch (e) {}
+  });
+  if (typeof renderMathInElement !== 'undefined') {
+    renderMathInElement(document.body, {
+      delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '\\(', right: '\\)', display: false }
+      ],
+      throwOnError: false
+    });
+  }
+})();
+</script></body></html>

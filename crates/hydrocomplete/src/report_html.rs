@@ -664,4 +664,29 @@ mod tests {
         assert!(!html.contains(r"\text{ft^2}"));
         assert!(html.contains("P1"));
     }
+
+    /// Writes `tests/frontend/fixtures/sample-report.html` when `HC_WRITE_FRONTEND_FIXTURE=1`.
+    #[test]
+    fn write_frontend_report_fixture() {
+        if std::env::var("HC_WRITE_FRONTEND_FIXTURE").ok().as_deref() != Some("1") {
+            return;
+        }
+        let (net, a) = sample();
+        let html = format_hydraulic_report_html(
+            &net,
+            &a,
+            &StormAnalysisParams::default(),
+            &HtmlReportMeta {
+                title: "HydroComplete Report".into(),
+                drawing_name: "frontend-fixture".into(),
+                generated_local: "frontend-fixture".into(),
+            },
+        );
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/frontend/fixtures/sample-report.html");
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("fixture dir");
+        }
+        std::fs::write(&path, html).expect("write fixture");
+    }
 }

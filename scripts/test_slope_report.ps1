@@ -54,7 +54,7 @@ Test-Report "Flat inverts" @(
 ) @(
     "0.0010*"
     "minimum assumed slope"
-    "Q\_full = 3."
+    'Q_{\text{full}} = 3.3'
 ) @(
     ">ZERO SLOPE"
     ">ADVERSE SLOPE"

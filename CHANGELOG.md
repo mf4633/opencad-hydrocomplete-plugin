@@ -4,6 +4,19 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.10] - 2026-06-23
+
+### Added
+
+- **E2E test suite** — `scripts/run_e2e_suite.ps1` orchestrates Rust, OCS automation, 24-145, Playwright, and Civil 3D CI/GUI smoke
+- **Playwright front-end tests** — `tests/frontend/` validates KaTeX HTML reports and DAG WASM palette (`scripts/run_frontend_tests.ps1`)
+- **CI workflow** — Linux Rust build + Windows Playwright job (`scripts/run_ci_tests.ps1`)
+
+### Fixed
+
+- `test_slope_report.ps1` KaTeX assertions (`Q_{\text{full}}` result lines)
+- PowerShell runners tolerate `cargo`/`npm` stderr without false failures
+
 ## [0.4.7] - 2026-06-22
 
 ### Added
