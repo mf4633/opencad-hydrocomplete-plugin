@@ -178,7 +178,10 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                     ));
                     host.push_info("Open the HTML file in a browser (KaTeX formulas load from CDN).");
                 }
-                Err(e) => host.push_error(&e),
+                Err(e) => {
+                    host.push_error(&e);
+                    return false;
+                }
             }
             true
         }

@@ -164,6 +164,62 @@ pub fn parse_config(args: &str) -> CivilImportConfig {
     cfg
 }
 
+fn pipe_graph_has_cycle(n: usize, pipe_pairs: &[(usize, usize)]) -> bool {
+    if n == 0 || pipe_pairs.is_empty() {
+        return false;
+    }
+    let mut in_d = vec![0usize; n];
+    let mut adj = vec![Vec::new(); n];
+    for &(from, to) in pipe_pairs {
+        if from < n && to < n && from != to {
+            adj[from].push(to);
+            in_d[to] += 1;
+        }
+    }
+    let mut q: VecDeque<usize> = (0..n).filter(|&i| in_d[i] == 0).collect();
+    let mut visited = 0usize;
+    while let Some(u) = q.pop_front() {
+        visited += 1;
+        for &v in &adj[u] {
+            in_d[v] = in_d[v].saturating_sub(1);
+            if in_d[v] == 0 {
+                q.push_back(v);
+            }
+        }
+    }
+    visited < n
+}
+
+struct PipeEdge {
+    from: usize,
+    to: usize,
+    length: f64,
+    handle: u64,
+}
+
+/// Drop shortest pipes until the directed graph is acyclic (storm analysis requires a DAG).
+fn acyclic_pipe_edges(mut edges: Vec<PipeEdge>, n: usize) -> (Vec<PipeEdge>, usize) {
+    let mut removed = 0usize;
+    while pipe_graph_has_cycle(n, &edges.iter().map(|e| (e.from, e.to)).collect::<Vec<_>>()) {
+        if edges.is_empty() {
+            break;
+        }
+        let drop_idx = edges
+            .iter()
+            .enumerate()
+            .min_by(|(_, a), (_, b)| {
+                a.length
+                    .partial_cmp(&b.length)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(i, _)| i)
+            .unwrap_or(edges.len() - 1);
+        edges.remove(drop_idx);
+        removed += 1;
+    }
+    (edges, removed)
+}
+
 fn pipe_topology_degrees(n: usize, pipe_pairs: &[(usize, usize)]) -> (Vec<usize>, Vec<usize>) {
     let mut in_d = vec![0usize; n];
     let mut out_d = vec![0usize; n];
@@ -938,17 +994,25 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         ));
     }
 
-    let mut pipe_pairs: Vec<(usize, usize)> = Vec::new();
+    let mut pipe_edges: Vec<PipeEdge> = Vec::new();
     let mut skipped_pipes = 0usize;
 
     for pipe in &civil_pipes {
         match match_pipe_endpoints(&civil_structs, pipe, cfg.match_tolerance_ft) {
-            Some((f, t)) => pipe_pairs.push((f, t)),
+            Some((f, t)) => {
+                let len = ((pipe.x1 - pipe.x0).powi(2) + (pipe.y1 - pipe.y0).powi(2)).sqrt();
+                pipe_edges.push(PipeEdge {
+                    from: f,
+                    to: t,
+                    length: len,
+                    handle: pipe.handle.value(),
+                });
+            }
             None => skipped_pipes += 1,
         }
     }
 
-    if pipe_pairs.is_empty() {
+    if pipe_edges.is_empty() {
         return Err(format!(
             "Found {} structure(s) and {} line(s) but could not match pipe endpoints within {:.0} ft.",
             civil_structs.len(),
@@ -958,6 +1022,9 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
     }
 
     let mut structs = civil_structs;
+    let (pipe_edges, cycle_drops) = acyclic_pipe_edges(pipe_edges, structs.len());
+    let pipe_pairs: Vec<(usize, usize)> = pipe_edges.iter().map(|e| (e.from, e.to)).collect();
+    let active_handles: HashSet<u64> = pipe_edges.iter().map(|e| e.handle).collect();
     let struct_labels_matched =
         apply_structure_labels(&mut structs, &struct_labels, STRUCT_LABEL_MATCH_FT);
     refine_outfall_kind(&mut structs, &pipe_pairs);
@@ -976,6 +1043,9 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         let Some((from_i, to_i)) = match_pipe_endpoints(&structs, pipe, cfg.match_tolerance_ft) else {
             continue;
         };
+        if !active_handles.contains(&pipe.handle.value()) {
+            continue;
+        }
         if !used_lines.insert(pipe.handle.value()) {
             continue;
         }
@@ -1055,7 +1125,7 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         })
         .count();
 
-    let msg = format!(
+    let mut msg = format!(
         "Civil import from \"{}\": {} structure(s) ({} inlet, {} outfall), {} MText + {} pipe Text label(s) ({} structures matched), {} line(s) XDATA-tagged ({} w/ dia label, {} matched, {} skipped), {} pipe(s) in network, default dia={:.2} ft n={:.3}.{catchment_note}",
         cfg.layer,
         structs.len(),
@@ -1072,6 +1142,9 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         cfg.diameter_ft,
         cfg.n
     );
+    if cycle_drops > 0 {
+        msg.push_str(&format!(" Dropped {cycle_drops} cyclic pipe(s) for analysis."));
+    }
     if let Some(dir) = std::env::var_os("APPDATA") {
         let log = std::path::PathBuf::from(dir)
             .join("HydroComplete")
@@ -1085,6 +1158,19 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
 mod tests {
     use super::*;
     use acadrust::entities::AttributeEntity;
+
+    #[test]
+    fn acyclic_pipe_edges_breaks_simple_cycle() {
+        let edges = vec![
+            PipeEdge { from: 0, to: 1, length: 100.0, handle: 1 },
+            PipeEdge { from: 1, to: 2, length: 100.0, handle: 2 },
+            PipeEdge { from: 2, to: 0, length: 10.0, handle: 3 },
+        ];
+        let (kept, removed) = acyclic_pipe_edges(edges, 3);
+        assert_eq!(removed, 1);
+        assert_eq!(kept.len(), 2);
+        assert!(!pipe_graph_has_cycle(3, &kept.iter().map(|e| (e.from, e.to)).collect::<Vec<_>>()));
+    }
 
     #[test]
     fn kind_from_block_classifies_outfall_and_inlet() {

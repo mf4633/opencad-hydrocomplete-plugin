@@ -31,9 +31,43 @@ pub fn write_html_report(drawing_name: &str, html: &str) -> Result<PathBuf, Stri
     Ok(path)
 }
 
+fn report_export_log_path() -> std::path::PathBuf {
+    std::env::var("APPDATA")
+        .map(|appdata| {
+            std::path::PathBuf::from(appdata)
+                .join("HydroComplete")
+                .join("report-export-last.txt")
+        })
+        .unwrap_or_else(|_| std::path::PathBuf::from("report-export-last.txt"))
+}
+
+fn log_report_export_error(message: &str) {
+    let path = report_export_log_path();
+    let _ = std::fs::create_dir_all(path.parent().unwrap_or(std::path::Path::new(".")));
+    let _ = std::fs::write(&path, message);
+}
+
+fn clear_report_export_error_log() {
+    let path = report_export_log_path();
+    let _ = std::fs::remove_file(path);
+}
+
 /// Analyze the drawn network and export the hydraulic HTML report.
 /// Returns `(path, peak design Q cfs)`.
 pub fn export_hydraulic_report<'a>(
+    entities: impl Iterator<Item = &'a EntityType>,
+    params: &StormAnalysisParams,
+    drawing_name: &str,
+) -> Result<(PathBuf, f64), String> {
+    let result = export_hydraulic_report_inner(entities, params, drawing_name);
+    match &result {
+        Err(e) => log_report_export_error(e),
+        Ok(_) => clear_report_export_error_log(),
+    }
+    result
+}
+
+fn export_hydraulic_report_inner<'a>(
     entities: impl Iterator<Item = &'a EntityType>,
     params: &StormAnalysisParams,
     drawing_name: &str,
