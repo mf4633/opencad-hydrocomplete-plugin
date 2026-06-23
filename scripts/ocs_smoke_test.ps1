@@ -31,8 +31,16 @@ $requests = @(
     '{"op":"entities"}'
 )
 
-$input = $requests -join "`n"
-$output = $input | & $Ocs --serve 2>&1
+$output = [System.Collections.Generic.List[string]]::new()
+$prev = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    @($requests) | & $Ocs --serve 2>&1 | ForEach-Object { $output.Add([string]$_) }
+} finally {
+    $ErrorActionPreference = $prev
+    $Error.Clear()
+}
+$output = $output.ToArray()
 $output | ForEach-Object { Write-Host $_ }
 
 $lines = @($output)

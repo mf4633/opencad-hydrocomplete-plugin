@@ -11,7 +11,9 @@ if (-not (Test-Path $Ocs)) { throw "OCS not found: $Ocs" }
 if (-not (Test-Path ($Dwg -replace '/', '\')) ) { throw "DWG not found: $Dwg" }
 
 function Invoke-Ocs([string[]]$cmds) {
-    ($cmds -join "`n") | & $Ocs --serve 2>&1
+    $lines = [System.Collections.Generic.List[string]]::new()
+    @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    return $lines.ToArray()
 }
 
 Write-Host "=== 24-145 X-DRAINAGE.dwg — HydroComplete probe ==="

@@ -5,6 +5,7 @@
 //! inverse happens: only `raw_dwg_eed` is populated. This module registers APPIDs,
 //! encodes records before save, and hydrates records after open.
 
+use acadrust::tables::layer::Layer as DocLayer;
 use acadrust::tables::{AppId, TableEntry};
 use acadrust::xdata::{ExtendedDataRecord, XDataValue};
 use acadrust::{CadDocument, DxfVersion, EntityType, Handle};
@@ -330,8 +331,29 @@ pub fn hydrate_document(doc: &mut CadDocument) {
     }
 }
 
+/// Register layer table entries for every layer referenced by entities.
+///
+/// OCS/acadrust drops unknown layer names to `"0"` on DWG save when the layer
+/// has no table entry with a real handle (see OpenCADStudio issue #67).
+pub fn ensure_layers_for_entities(doc: &mut CadDocument) {
+    let names: std::collections::HashSet<String> = doc
+        .entities()
+        .map(|e| e.common().layer.clone())
+        .filter(|n| !n.is_empty())
+        .collect();
+    for name in names {
+        if doc.layers.contains(&name) {
+            continue;
+        }
+        let mut layer = DocLayer::new(&name);
+        layer.handle = doc.allocate_handle();
+        let _ = doc.layers.add(layer);
+    }
+}
+
 pub fn commit_document(doc: &mut CadDocument) {
     ensure_xdata_app_ids(doc);
+    ensure_layers_for_entities(doc);
     let wide = dwg_strings_wide(doc);
     let app_by_name: std::collections::HashMap<String, u64> = doc
         .app_ids
@@ -440,6 +462,28 @@ mod tests {
         let back = decode_record(APP_STRUCT, &bytes, true).expect("decode");
         assert_eq!(back.application_name, APP_STRUCT);
         assert_eq!(back.values.len(), rec.values.len());
+    }
+
+    #[test]
+    fn hc_struct_layer_survives_dwg_roundtrip() {
+        let mut doc = inlet_outfall_pipe_doc();
+        for ent in doc.entities_mut() {
+            ent.common_mut().layer = "HC-STRUCT".to_string();
+        }
+        commit_document(&mut doc);
+        assert!(doc.layers.contains("HC-STRUCT"), "HC-STRUCT layer must be registered");
+
+        let bytes = DwgWriter::write_to_vec(&doc).expect("dwg write");
+        let loaded = DwgReader::from_stream(Cursor::new(bytes))
+            .read()
+            .expect("dwg read");
+        assert!(
+            loaded.layers.contains("HC-STRUCT"),
+            "HC-STRUCT layer lost on DWG round-trip"
+        );
+        let h = Handle::new(1);
+        let ent = loaded.get_entity(h).expect("structure entity");
+        assert_eq!(ent.common().layer, "HC-STRUCT");
     }
 
     #[test]

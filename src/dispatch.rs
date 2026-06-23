@@ -772,7 +772,10 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
         cmd if cmd.starts_with("HC_PIPE_ARGS ") => {
             match placement::place_pipe(host, command_arg(cmd).unwrap_or("")) {
                 Ok(msg) => host.push_output(&msg),
-                Err(e) => host.push_error(&e),
+                Err(e) => {
+                    host.push_error(&e);
+                    return false;
+                }
             }
             true
         }
@@ -787,7 +790,10 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
         cmd if cmd.starts_with("HC_PIPE ") => {
             match placement::place_pipe(host, command_arg(cmd).unwrap_or("")) {
                 Ok(msg) => host.push_output(&msg),
-                Err(e) => host.push_error(&e),
+                Err(e) => {
+                    host.push_error(&e);
+                    return false;
+                }
             }
             true
         }

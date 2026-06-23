@@ -19,7 +19,7 @@ Start-Sleep -Seconds 2
 
 function Invoke-Ocs([string[]]$cmds) {
     $lines = [System.Collections.Generic.List[string]]::new()
-    ($cmds -join "`n") | & $Ocs --serve 2>&1 | ForEach-Object {
+    @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object {
         $lines.Add([string]$_)
     }
     return $lines.ToArray()

@@ -14,14 +14,40 @@ if (-not (Test-Path $Ocs)) { throw "OpenCADStudio not found: $Ocs" }
 Start-Sleep -Seconds 1
 $demoPath = ($OutDwg -replace '\\', '/')
 
+function Invoke-Ocs([string[]]$cmds) {
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    } finally {
+        $ErrorActionPreference = $prev
+        $Error.Clear()
+    }
+    return $lines.ToArray()
+}
+
+$setup = Invoke-Ocs @(
+    '{"op":"new"}'
+    '{"op":"run","cmd":"HC_INLET 0,0"}'
+    '{"op":"run","cmd":"HC_JUNCTION 50,0"}'
+    '{"op":"run","cmd":"HC_OUTFALL 100,0"}'
+    '{"op":"query","type":"Circle"}'
+)
+$q = @($setup | Where-Object { $_ -match '"entities":\[' } | Select-Object -Last 1 | ConvertFrom-Json)
+$inletH = ($q.entities | Where-Object { $_.radius -eq 3.0 }).handle
+$junctH = ($q.entities | Where-Object { $_.radius -eq 4.0 }).handle
+$outfallH = ($q.entities | Where-Object { $_.radius -eq 6.0 }).handle
+if (-not $inletH -or -not $junctH -or -not $outfallH) { throw 'Could not resolve structure handles from OCS query' }
+
 $requests = @(
     '{"op":"new"}'
     '{"op":"run","cmd":"HC_INLET 0,0"}'
     '{"op":"run","cmd":"HC_JUNCTION 50,0"}'
     '{"op":"run","cmd":"HC_OUTFALL 100,0"}'
-    '{"op":"run","cmd":"HC_PIPE_ARGS 2B 2C d15 n13"}'
-    '{"op":"run","cmd":"HC_PIPE_ARGS 2C 2D d18 n13"}'
-    '{"op":"run","cmd":"HC_EDIT 2B area 2.0 c 0.75"}'
+    "{`"op`":`"run`",`"cmd`":`"HC_PIPE_ARGS $inletH $junctH d15 n13`"}"
+    "{`"op`":`"run`",`"cmd`":`"HC_PIPE_ARGS $junctH $outfallH d18 n13`"}"
+    "{`"op`":`"run`",`"cmd`":`"HC_EDIT $inletH area 2.0 c 0.75`"}"
     '{"op":"run","cmd":"HC_PARAMS PRESET charlotte-nc 10"}'
     '{"op":"run","cmd":"HC_ANALYZE"}'
     '{"op":"run","cmd":"HC_REPORT"}'
@@ -29,7 +55,7 @@ $requests = @(
 )
 
 Write-Host "Running manual pipe automation (HC_PIPE_ARGS d15/d18)..."
-$output = ($requests -join "`n") | & $Ocs --serve 2>&1
+$output = @(Invoke-Ocs $requests)
 $output | ForEach-Object { Write-Host $_ }
 
 foreach ($line in @($output)) {

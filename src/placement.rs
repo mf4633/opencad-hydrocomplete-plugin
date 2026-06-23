@@ -315,8 +315,11 @@ pub fn place_pipe(host: &mut dyn HostApi, args: &str) -> Result<String, String> 
         .ok_or_else(|| format!("No structure near end ({x1:.2}, {y1:.2})"))?;
         (from_h, to_h, x0, y0, x1, y1, num_start)
     } else {
-        let from_h = parse_handle(tokens[0]).ok_or("Invalid from_handle")?;
-        let to_h = parse_handle(tokens[1]).ok_or("Invalid to_handle")?;
+        let ents: Vec<_> = host.document().entities().collect();
+        let from_h = data::resolve_entity_handle(ents.iter().copied(), tokens[0])
+            .ok_or("Invalid from_handle")?;
+        let to_h = data::resolve_entity_handle(ents.iter().copied(), tokens[1])
+            .ok_or("Invalid to_handle")?;
         let (x0, y0, x1, y1) = pipe_endpoints_from_handles(host, from_h, to_h)?;
         (from_h, to_h, x0, y0, x1, y1, 2)
     };
@@ -454,6 +457,36 @@ mod tests {
         assert_eq!(parse_handle("2B").unwrap().value(), 43);
         assert_eq!(parse_handle("2b").unwrap().value(), 43);
         assert!(parse_handle("0").is_none());
+    }
+
+    #[test]
+    fn resolve_ocs_hex_handles_30_31() {
+        use acadrust::{Circle, EntityType, Handle};
+        let mut inlet = EntityType::Circle(Circle {
+            center: Vector3::new(0.0, 0.0, 0.0),
+            radius: 3.0,
+            ..Default::default()
+        });
+        inlet.common_mut().handle = Handle::new(0x2F);
+        let mut junct = EntityType::Circle(Circle {
+            center: Vector3::new(50.0, 0.0, 0.0),
+            radius: 4.0,
+            ..Default::default()
+        });
+        junct.common_mut().handle = Handle::new(0x30);
+        let ents = [&inlet, &junct];
+        assert_eq!(
+            data::resolve_entity_handle(ents.iter().copied(), "30")
+                .unwrap()
+                .value(),
+            0x30
+        );
+        assert_eq!(
+            data::resolve_entity_handle(ents.iter().copied(), "2F")
+                .unwrap()
+                .value(),
+            0x2F
+        );
     }
 
     #[test]

@@ -51,6 +51,46 @@ pub fn parse_entity_handle(s: &str) -> Option<Handle> {
         .map(Handle::new)
 }
 
+/// Resolve a handle token against live entities when hex and decimal both parse.
+///
+/// OCS `--serve` `query` returns uppercase hex (`30` = handle 0x30). The same
+/// token is also a valid decimal (`30`), which used to win and broke pipe pick.
+/// Prefer whichever candidate exists in the drawing; fall back to hex (OCS).
+pub fn resolve_entity_handle<'a>(
+    entities: impl Iterator<Item = &'a EntityType>,
+    s: &str,
+) -> Option<Handle> {
+    let t = s.trim();
+    if t.is_empty() {
+        return None;
+    }
+    let live: std::collections::HashSet<Handle> =
+        entities.map(|e| e.common().handle).collect();
+
+    let mut candidates = Vec::new();
+    if let Ok(v) = u64::from_str_radix(t, 16) {
+        if v != 0 {
+            candidates.push(Handle::new(v));
+        }
+    }
+    if t.chars().all(|c| c.is_ascii_digit()) {
+        if let Ok(v) = t.parse::<u64>() {
+            if v != 0 {
+                let h = Handle::new(v);
+                if !candidates.contains(&h) {
+                    candidates.push(h);
+                }
+            }
+        }
+    }
+    for h in &candidates {
+        if live.contains(h) {
+            return Some(*h);
+        }
+    }
+    candidates.first().copied()
+}
+
 pub fn kind_str(k: NodeKind) -> &'static str {
     match k {
         NodeKind::Inlet => "inlet",
@@ -963,5 +1003,22 @@ mod tests {
             pipe(1, 99, 0.0, 100.0), // 99 doesn't exist
         ];
         assert!(network_from_entities(ents.iter()).is_err());
+    }
+
+    #[test]
+    fn resolve_entity_handle_prefers_live_hex_over_decimal() {
+        let ents = vec![
+            structure(0x2F, NodeKind::Inlet, 0.0, 100.0),
+            structure(0x30, NodeKind::Junction, 50.0, 99.5),
+            structure(43, NodeKind::Outfall, 100.0, 99.0),
+        ];
+        assert_eq!(
+            resolve_entity_handle(ents.iter(), "30").unwrap().value(),
+            0x30
+        );
+        assert_eq!(
+            resolve_entity_handle(ents.iter(), "43").unwrap().value(),
+            43
+        );
     }
 }

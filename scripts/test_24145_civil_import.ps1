@@ -15,7 +15,9 @@ if (-not (Test-Path ($Dwg -replace '/', '\'))) { throw "DWG not found: $Dwg" }
 Start-Sleep -Seconds 2
 
 function Invoke-Ocs([string[]]$cmds) {
-    ($cmds -join "`n") | & $Ocs --serve 2>&1
+    $lines = [System.Collections.Generic.List[string]]::new()
+    @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    return $lines.ToArray()
 }
 
 Write-Host ""

@@ -5,7 +5,27 @@ $ReportDir = Join-Path $env:USERPROFILE "Documents\HydroComplete"
 $LandXml = "C:/Users/michael.flynn/dev/opencad-hydrocomplete-plugin/crates/stormsewer/examples/sample_landxml.xml"
 
 function Invoke-Ocs($cmds) {
-    ($cmds -join "`n") | & $Ocs --serve 2>&1
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    } finally {
+        $ErrorActionPreference = $prev
+        $Error.Clear()
+    }
+    return $lines.ToArray()
+}
+
+function Get-CircleHandles($lines) {
+    $q = @($lines | Where-Object { $_ -match '"entities":\[' } | Select-Object -Last 1)
+    if (-not $q) { throw 'Circle query missing from OCS output' }
+    $json = $q | ConvertFrom-Json
+    return @{
+        Inlet = ($json.entities | Where-Object { $_.radius -eq 3.0 }).handle
+        Junction = ($json.entities | Where-Object { $_.radius -eq 4.0 }).handle
+        Outfall = ($json.entities | Where-Object { $_.radius -eq 6.0 }).handle
+    }
 }
 
 function Test-Report($name, $cmds, $mustMatch, $mustNotMatch) {
@@ -45,11 +65,21 @@ function Test-Report($name, $cmds, $mustMatch, $mustNotMatch) {
 }
 
 # Flat inverts: assumed 0.001 Manning slope; may legitimately surcharge at high Q
+$flatSetup = Invoke-Ocs @(
+    '{"op":"new"}'
+    '{"op":"run","cmd":"HC_INLET 0,0 100 106 1.0 0.7"}'
+    '{"op":"run","cmd":"HC_OUTFALL 100,0 100 106"}'
+    '{"op":"query","type":"Circle"}'
+)
+$flatH = Get-CircleHandles $flatSetup
+if (-not $flatH.Inlet -or -not $flatH.Outfall) { throw 'Flat inverts: could not resolve structure handles' }
+
 Test-Report "Flat inverts" @(
     '{"op":"new"}'
     '{"op":"run","cmd":"HC_INLET 0,0 100 106 1.0 0.7"}'
     '{"op":"run","cmd":"HC_OUTFALL 100,0 100 106"}'
-    '{"op":"run","cmd":"HC_PIPE 2B 2C 1.5 0.013"}'
+    "{`"op`":`"run`",`"cmd`":`"HC_PIPE_ARGS $($flatH.Inlet) $($flatH.Outfall) d18 n13`"}"
+    "{`"op`":`"run`",`"cmd`":`"HC_EDIT $($flatH.Outfall) invert 100`"}"
     '{"op":"run","cmd":"HC_REPORT"}'
 ) @(
     "0.0010*"
@@ -61,13 +91,22 @@ Test-Report "Flat inverts" @(
     '<tr class="capacity-na">'
 )
 
-# Adverse: use HC_EDIT because --serve splits coordinate args on placement cmds
+# Adverse: raise downstream invert above upstream, then connect with serve-safe pipe args
+$advSetup = Invoke-Ocs @(
+    '{"op":"new"}'
+    '{"op":"run","cmd":"HC_INLET 0,0 100 106 1.0 0.7"}'
+    '{"op":"run","cmd":"HC_OUTFALL 100,0 100 106"}'
+    '{"op":"query","type":"Circle"}'
+)
+$advH = Get-CircleHandles $advSetup
+if (-not $advH.Inlet -or -not $advH.Outfall) { throw 'Adverse slope: could not resolve structure handles' }
+
 Test-Report "Adverse slope" @(
     '{"op":"new"}'
     '{"op":"run","cmd":"HC_INLET 0,0 100 106 1.0 0.7"}'
     '{"op":"run","cmd":"HC_OUTFALL 100,0 100 106"}'
-    '{"op":"run","cmd":"HC_EDIT 44 invert 102"}'
-    '{"op":"run","cmd":"HC_PIPE 2B 2C 1.5 0.013"}'
+    "{`"op`":`"run`",`"cmd`":`"HC_PIPE_ARGS $($advH.Inlet) $($advH.Outfall) d18 n13`"}"
+    "{`"op`":`"run`",`"cmd`":`"HC_EDIT $($advH.Outfall) invert 102`"}"
     '{"op":"run","cmd":"HC_REPORT"}'
 ) @(
     ">ADVERSE SLOPE"
@@ -92,14 +131,27 @@ Test-Report "LandXML healthy" @(
     '<tr class="capacity-na">'
 )
 
+$pipeSetup = Invoke-Ocs @(
+    '{"op":"new"}'
+    '{"op":"run","cmd":"HC_INLET 0,0"}'
+    '{"op":"run","cmd":"HC_JUNCTION 50,0"}'
+    '{"op":"run","cmd":"HC_OUTFALL 100,0"}'
+    '{"op":"query","type":"Circle"}'
+)
+$q = @($pipeSetup | Where-Object { $_ -match '"entities":\[' } | Select-Object -Last 1 | ConvertFrom-Json)
+$inletH = ($q.entities | Where-Object { $_.radius -eq 3.0 }).handle
+$junctH = ($q.entities | Where-Object { $_.radius -eq 4.0 }).handle
+$outfallH = ($q.entities | Where-Object { $_.radius -eq 6.0 }).handle
+if (-not $inletH -or -not $junctH -or -not $outfallH) { throw 'HC_PIPE_ARGS serve: could not resolve structure handles' }
+
 Test-Report "HC_PIPE_ARGS serve" @(
     '{"op":"new"}'
     '{"op":"run","cmd":"HC_INLET 0,0"}'
     '{"op":"run","cmd":"HC_JUNCTION 50,0"}'
     '{"op":"run","cmd":"HC_OUTFALL 100,0"}'
-    '{"op":"run","cmd":"HC_PIPE_ARGS 2B 2C d15 n13"}'
-    '{"op":"run","cmd":"HC_PIPE_ARGS 2C 2D d18 n13"}'
-    '{"op":"run","cmd":"HC_EDIT 2B area 2.0 c 0.75"}'
+    "{`"op`":`"run`",`"cmd`":`"HC_PIPE_ARGS $inletH $junctH d15 n13`"}"
+    "{`"op`":`"run`",`"cmd`":`"HC_PIPE_ARGS $junctH $outfallH d18 n13`"}"
+    "{`"op`":`"run`",`"cmd`":`"HC_EDIT $inletH area 2.0 c 0.75`"}"
     '{"op":"run","cmd":"HC_PARAMS PRESET charlotte-nc 10"}'
     '{"op":"run","cmd":"HC_REPORT"}'
 ) @(

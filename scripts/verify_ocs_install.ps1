@@ -19,7 +19,7 @@ $lines = [System.Collections.Generic.List[string]]::new()
     '{"op":"open","path":"' + $Dwg + '"}'
     '{"op":"run","cmd":"HC_CIVIL_IMPORT force"}'
     '{"op":"run","cmd":"HC_NETWORK"}'
-) -join "`n" | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
 
 foreach ($line in $lines) {
     if ($line -match '"ok":false') { throw "OCS step failed: $line" }

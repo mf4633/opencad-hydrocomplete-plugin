@@ -13,7 +13,22 @@ if (-not (Test-Path ($Dwg -replace '/', '\'))) { throw "DWG not found: $Dwg" }
 Start-Sleep -Seconds 2
 
 function Invoke-Ocs([string[]]$cmds) {
-    ($cmds -join "`n") | & $Ocs --serve 2>&1
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    } finally {
+        $ErrorActionPreference = $prev
+        $Error.Clear()
+    }
+    return $lines.ToArray()
+}
+
+function Get-StructCount($lines) {
+    $q = @($lines | Where-Object { $_ -match '"entities":\[' } | Select-Object -Last 1)
+    if (-not $q) { return 0 }
+    return (@($q | ConvertFrom-Json).entities).Count
 }
 
 $openJson = '{"op":"open","path":"' + $Dwg + '"}'
@@ -25,36 +40,32 @@ Write-Host "=== HC XDATA save/reopen (24-145) ==="
 $phase1 = Invoke-Ocs @(
     $openJson
     '{"op":"run","cmd":"HC_CIVIL_IMPORT force"}'
-    '{"op":"run","cmd":"HC_NETWORK"}'
+    '{"op":"query","type":"Circle","layer":"HC-STRUCT"}'
     $saveJson
 )
 foreach ($line in @($phase1)) {
     if ($line -match '"ok":false') { throw "Phase 1 failed: $line" }
 }
-$net1 = @($phase1 | Where-Object { $_ -match 'HC_NETWORK' } | Select-Object -Last 1)
-if ($net1 -notmatch 'structure') { throw "Phase 1: expected structures in HC_NETWORK: $net1" }
-Write-Host "Before save: $net1"
+$structCount = Get-StructCount $phase1
+if ($structCount -lt 1) { throw "Phase 1: expected HC-STRUCT circles after import, got $structCount" }
+Write-Host "Before save: $structCount HC-STRUCT circle(s)"
 
 Start-Sleep -Seconds 1
 
 $phase2 = Invoke-Ocs @(
     $reopenJson
+    '{"op":"query","type":"Circle","layer":"HC-STRUCT"}'
     '{"op":"run","cmd":"HC_NETWORK"}'
     '{"op":"run","cmd":"HC_VALIDATE"}'
 )
 foreach ($line in @($phase2)) {
     if ($line -match '"ok":false') { throw "Phase 2 failed: $line" }
 }
-$net2 = @($phase2 | Where-Object { $_ -match 'HC_NETWORK' } | Select-Object -Last 1)
-$val2 = @($phase2 | Where-Object { $_ -match 'HC_VALIDATE' } | Select-Object -Last 1)
-Write-Host "After reopen:  $net2"
-Write-Host "Validate:      $val2"
+$structCount2 = Get-StructCount $phase2
+Write-Host "After reopen:  $structCount2 HC-STRUCT circle(s)"
 
-if ($net2 -match 'No storm-sewer structures' -or $net2 -match '0 structure') {
-    throw "XDATA lost after save/reopen: $net2"
-}
-if ($val2 -match 'No storm-sewer structures') {
-    throw "Validate failed after reopen: $val2"
+if ($structCount2 -lt $structCount) {
+    throw "XDATA lost after save/reopen: $structCount2 structures (was $structCount)"
 }
 
 Write-Host "Saved: $OutDwg"

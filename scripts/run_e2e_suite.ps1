@@ -15,21 +15,27 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $started = Get-Date
-$results = [System.Collections.Generic.List[object]]::new()
+$script:E2EResults = [System.Collections.Generic.List[object]]::new()
+$script:E2EStarted = $started
+$script:E2EFailed = $false
+
+function Write-E2ESummary {
+    $total = (Get-Date) - $script:E2EStarted
+    Write-Host ''
+    Write-Host ('=' * 72)
+    Write-Host 'E2E SUMMARY'
+    Write-Host ('=' * 72)
+    $script:E2EResults | Format-Table Step, Status, Seconds, Note -AutoSize
+    $passed = @($script:E2EResults | Where-Object Status -eq 'PASS').Count
+    $failed = @($script:E2EResults | Where-Object Status -eq 'FAIL').Count
+    $skipped = @($script:E2EResults | Where-Object Status -eq 'SKIP').Count
+    Write-Host "Passed: $passed  Failed: $failed  Skipped: $skipped  Total time: $([math]::Round($total.TotalMinutes, 1)) min"
+}
 
 function Invoke-External {
     param([scriptblock]$Action)
-    $prev = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-        & $Action
-        $ok = $?
-        $code = if ($null -ne $LASTEXITCODE) { $LASTEXITCODE } elseif ($ok) { 0 } else { 1 }
-        if ($code -ne 0) { throw "exit code $code" }
-    }
-    finally {
-        $ErrorActionPreference = $prev
-    }
+    & $Action
+    if ($LASTEXITCODE -ne 0) { throw "exit code $LASTEXITCODE" }
 }
 
 function Invoke-E2EStep {
@@ -46,21 +52,69 @@ function Invoke-E2EStep {
     try {
         Invoke-External $Action
         $elapsed = (Get-Date) - $stepStart
-        $results.Add([pscustomobject]@{ Step = $Name; Status = 'PASS'; Seconds = [math]::Round($elapsed.TotalSeconds, 1) })
+        $script:E2EResults.Add([pscustomobject]@{ Step = $Name; Status = 'PASS'; Seconds = [math]::Round($elapsed.TotalSeconds, 1) })
         Write-Host "PASS: $Name ($([math]::Round($elapsed.TotalSeconds, 1))s)"
     }
     catch {
         $elapsed = (Get-Date) - $stepStart
         if ($Optional) {
-            $results.Add([pscustomobject]@{ Step = $Name; Status = 'SKIP'; Seconds = [math]::Round($elapsed.TotalSeconds, 1); Note = $_.Exception.Message })
-            Write-Host "SKIP: $Name — $($_.Exception.Message)"
+            $script:E2EResults.Add([pscustomobject]@{ Step = $Name; Status = 'SKIP'; Seconds = [math]::Round($elapsed.TotalSeconds, 1); Note = $_.Exception.Message })
+            Write-Host "SKIP: $Name - $($_.Exception.Message)"
         }
         else {
-            $results.Add([pscustomobject]@{ Step = $Name; Status = 'FAIL'; Seconds = [math]::Round($elapsed.TotalSeconds, 1); Note = $_.Exception.Message })
-            Write-Host "FAIL: $Name — $($_.Exception.Message)"
-            throw
+            $script:E2EResults.Add([pscustomobject]@{ Step = $Name; Status = 'FAIL'; Seconds = [math]::Round($elapsed.TotalSeconds, 1); Note = $_.Exception.Message })
+            Write-Host "FAIL: $Name - $($_.Exception.Message)"
+            $script:E2EFailed = $true
         }
     }
+}
+
+function Invoke-E2EScript {
+    param(
+        [string]$Name,
+        [string]$ScriptPath,
+        [string[]]$ScriptArgs = @(),
+        [switch]$Optional
+    )
+    Write-Host ''
+    Write-Host ('=' * 72)
+    Write-Host "E2E: $Name"
+    Write-Host ('=' * 72)
+    $stepStart = Get-Date
+    $logBase = Join-Path $env:TEMP ("hc-e2e-{0}" -f ([guid]::NewGuid().ToString('N')))
+    $outLog = "$logBase.out.log"
+    $errLog = "$logBase.err.log"
+    $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) + $ScriptArgs
+    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -Wait -PassThru -NoNewWindow `
+        -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+    $code = $proc.ExitCode
+    $prevEap = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    foreach ($path in @($outLog, $errLog)) {
+        if (Test-Path $path) {
+            Get-Content -LiteralPath $path -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+    $Error.Clear()
+    $elapsed = (Get-Date) - $stepStart
+    if ([int]$code -ne 0) {
+        $note = "exit code $code"
+        if ($Optional) {
+            $script:E2EResults.Add([pscustomobject]@{ Step = $Name; Status = 'SKIP'; Seconds = [math]::Round($elapsed.TotalSeconds, 1); Note = $note })
+            Write-Host "SKIP: $Name - $note"
+        }
+        else {
+            $script:E2EResults.Add([pscustomobject]@{ Step = $Name; Status = 'FAIL'; Seconds = [math]::Round($elapsed.TotalSeconds, 1); Note = $note })
+            Write-Host "FAIL: $Name - $note"
+            $script:E2EFailed = $true
+        }
+    }
+    else {
+        $script:E2EResults.Add([pscustomobject]@{ Step = $Name; Status = 'PASS'; Seconds = [math]::Round($elapsed.TotalSeconds, 1) })
+        Write-Host "PASS: $Name ($([math]::Round($elapsed.TotalSeconds, 1))s)"
+    }
+    $ErrorActionPreference = $prevEap
 }
 
 Write-Host 'HydroComplete E2E suite'
@@ -70,11 +124,17 @@ Write-Host "OCS:  $Ocs"
 if (-not $SkipRust) {
     Invoke-E2EStep 'Rust workspace tests' {
         Push-Location $Root
+        $prevEap = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
         try {
             & cargo test --workspace --all-features 2>&1 | Out-Host
             if ($LASTEXITCODE -ne 0) { throw "cargo test failed" }
         }
-        finally { Pop-Location }
+        finally {
+            $ErrorActionPreference = $prevEap
+            $Error.Clear()
+            Pop-Location
+        }
     }
 }
 
@@ -87,24 +147,18 @@ if (-not $SkipBuild) {
 if (-not $SkipOcs) {
     if (-not (Test-Path $Ocs)) { throw "OCS executable not found: $Ocs" }
 
-    Invoke-E2EStep 'OCS LandXML smoke test' {
-        & (Join-Path $PSScriptRoot 'ocs_smoke_test.ps1')
-    }
+    Invoke-E2EScript 'OCS LandXML smoke test' (Join-Path $PSScriptRoot 'ocs_smoke_test.ps1')
+    Invoke-E2EScript 'OCS v0.4.2 integration (pipes, PDF, LandXML)' (Join-Path $PSScriptRoot 'test_v042.ps1')
+    Invoke-E2EScript 'OCS slope + report regression' (Join-Path $PSScriptRoot 'test_slope_report.ps1')
+    Invoke-E2EScript 'OCS Charlotte demo build' (Join-Path $PSScriptRoot 'build_hydro_demo.ps1')
+    Invoke-E2EScript 'OCS manual pipe demo build' (Join-Path $PSScriptRoot 'build_manual_pipe_demo.ps1')
 
-    Invoke-E2EStep 'OCS v0.4.2 integration (pipes, PDF, LandXML)' {
-        & (Join-Path $PSScriptRoot 'test_v042.ps1')
+    $dwgXdata = 'C:\Users\michael.flynn\Downloads\24-145 X-DRAINAGE.dwg'
+    if (-not (Test-Path $dwgXdata)) {
+        Invoke-E2EStep 'OCS XDATA save/reopen (24-145)' { throw 'DWG missing' } -Optional
     }
-
-    Invoke-E2EStep 'OCS slope + report regression' {
-        & (Join-Path $PSScriptRoot 'test_slope_report.ps1')
-    }
-
-    Invoke-E2EStep 'OCS Charlotte demo build' {
-        & (Join-Path $PSScriptRoot 'build_hydro_demo.ps1')
-    }
-
-    Invoke-E2EStep 'OCS manual pipe demo build' {
-        & (Join-Path $PSScriptRoot 'build_manual_pipe_demo.ps1')
+    else {
+        Invoke-E2EScript 'OCS XDATA save/reopen (24-145)' (Join-Path $PSScriptRoot 'test_xdata_save_reopen.ps1')
     }
 }
 
@@ -114,9 +168,7 @@ if (-not $Skip24145) {
         Invoke-E2EStep '24-145 full workflow' { throw 'DWG missing' } -Optional
     }
     else {
-        Invoke-E2EStep '24-145 Civil import + hydrology + report/PDF' {
-            & (Join-Path $PSScriptRoot 'run_24145_full_workflow.ps1') -Root $Root
-        }
+        Invoke-E2EScript '24-145 Civil import + hydrology + report/PDF' (Join-Path $PSScriptRoot 'run_24145_full_workflow.ps1') -ScriptArgs @('-Root', $Root)
     }
 }
 
@@ -153,13 +205,9 @@ elseif (-not $SkipCivil3d) {
     Invoke-E2EStep 'Civil 3D dotnet tests' { throw "Solution not found at $Civil3dRoot" } -Optional
 }
 
-$total = (Get-Date) - $started
-Write-Host ''
-Write-Host ('=' * 72)
-Write-Host 'E2E SUMMARY'
-Write-Host ('=' * 72)
-$results | Format-Table Step, Status, Seconds, Note -AutoSize
-$passed = @($results | Where-Object Status -eq 'PASS').Count
-$skipped = @($results | Where-Object Status -eq 'SKIP').Count
-Write-Host "Passed: $passed  Skipped: $skipped  Total time: $([math]::Round($total.TotalMinutes, 1)) min"
+Write-E2ESummary
+if ($script:E2EFailed -or @($script:E2EResults | Where-Object Status -eq 'FAIL').Count -gt 0) {
+    Write-Host 'E2E SUITE FAILED'
+    exit 1
+}
 Write-Host 'E2E SUITE PASSED'

@@ -25,7 +25,9 @@ function Test-OpenedDwg($label, $dwgPath, $must) {
         '{"op":"run","cmd":"HC_REPORT"}'
         '{"op":"run","cmd":"HC_REPORT_PDF"}'
     )
-    $output = ($requests -join "`n") | & $Ocs --serve 2>&1
+    $output = [System.Collections.Generic.List[string]]::new()
+    @($requests) | & $Ocs --serve 2>&1 | ForEach-Object { $output.Add([string]$_) }
+    $output = $output.ToArray()
     foreach ($line in @($output)) {
         if ($line -match '"ok":false') { throw "${label} failed: $line" }
     }

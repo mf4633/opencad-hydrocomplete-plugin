@@ -35,7 +35,8 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
         return Err(usage().into());
     }
 
-    let handle = parse_handle(tokens[0]).ok_or("Invalid entity handle")?;
+    let handle = data::resolve_entity_handle(host.document().entities(), tokens[0])
+        .ok_or("Invalid entity handle")?;
     let mut changes = Vec::new();
     let mut i = 1;
     while i + 1 < tokens.len() {
