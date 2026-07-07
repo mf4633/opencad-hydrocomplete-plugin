@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ocs_plugin_api::host::{ensure_plugin_state, HostApi};
+use ocs_plugin_api::host::HostApi;
 
 use acadrust::EntityType;
 use acadrust::Handle;
@@ -13,7 +13,6 @@ use super::drawing_params;
 use super::edit;
 use super::civil_import;
 use super::landxml_import;
-use super::manifest::PLUGIN_ID;
 use super::params_cmd;
 use super::background;
 use super::interactive::{AttachBackgroundInteractive, PlacePipeInteractive, PlaceStructureInteractive};
@@ -21,14 +20,13 @@ use super::network_edit;
 use super::placement;
 use super::report_export;
 use super::sizing;
-use super::state::HydroTabState;
 use super::validation;
 use super::{data, style, write_labels};
 
 fn tab_params(host: &mut dyn HostApi) -> stormsewer::params::StormAnalysisParams {
     let from_drawing =
         drawing_params::read_params_from_entities(host.document().entities());
-    let state = ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default);
+    let mut state = crate::state::state();
     if let Some(p) = from_drawing {
         state.params = p;
     }
@@ -302,8 +300,8 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
         cmd if cmd == "HC_PARAMS" || cmd.starts_with("HC_PARAMS ") => {
             let rest = cmd.trim_start_matches("HC_PARAMS").trim();
             let outcome = {
-                let state = ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default);
-                match params_cmd::apply_params(state, rest) {
+                let mut state = crate::state::state();
+                match params_cmd::apply_params(&mut state, rest) {
                     Ok(msg) => Ok((state.params.clone(), state.preset_key.clone(), msg)),
                     Err(e) => Err(e),
                 }
