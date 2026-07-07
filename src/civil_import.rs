@@ -920,8 +920,9 @@ fn apply_downstream_inverts(
                 if to_info.rim <= to_info.invert {
                     to_info.rim = to_info.invert + (DEFAULT_RIM - DEFAULT_INVERT);
                 }
-                if let Some(ent) = find_structure_mut(host, to_h) {
-                    data::write_structure_info(ent, &to_info);
+                if let Some(mut ent) = find_structure(host, to_h) {
+                    data::write_structure_info(&mut ent, &to_info);
+                    let _ = host.update_entity(ent);
                 }
             }
         }
@@ -938,13 +939,14 @@ fn structure_info(host: &dyn HostApi, handle: Handle) -> Result<data::StructureI
     Err(format!("Structure handle {} not found", handle.value()))
 }
 
-fn find_structure_mut<'a>(
-    host: &'a mut dyn HostApi,
-    handle: Handle,
-) -> Option<&'a mut EntityType> {
-    host.document_mut()
-        .entities_mut()
+/// Clone the structure entity with `handle` from the document snapshot.
+/// Out-of-process, mutating `document_mut()` does not propagate to the host:
+/// edits go to the clone and are committed back via `host.update_entity`.
+fn find_structure(host: &dyn HostApi, handle: Handle) -> Option<EntityType> {
+    host.document()
+        .entities()
         .find(|e| e.common().handle == handle)
+        .cloned()
 }
 
 fn pipe_length_between(host: &dyn HostApi, from: Handle, to: Handle) -> Option<f64> {
@@ -1051,14 +1053,17 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         }
         let from_h = handles[from_i];
         let to_h = handles[to_i];
-        let Some(ent) = host
-            .document_mut()
-            .entities_mut()
+        // Out-of-process, document_mut() is a local snapshot: tag a clone of
+        // the Civil 3D line and commit it through the update RPC.
+        let Some(mut ent) = host
+            .document()
+            .entities()
             .find(|e| e.common().handle == pipe.handle)
+            .cloned()
         else {
             continue;
         };
-        let EntityType::Line(_) = ent else {
+        let EntityType::Line(_) = &ent else {
             continue;
         };
         let spec = pipe_label_near_line(pipe, &pipe_labels, PIPE_LABEL_MATCH_FT);
@@ -1069,7 +1074,9 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         ent.common_mut()
             .extended_data
             .add_record(pipe_xdata(dia_ft, cfg.n, from_h, to_h));
-        tagged += 1;
+        if host.update_entity(ent) {
+            tagged += 1;
+        }
     }
 
     apply_downstream_inverts(&handles, &pipe_pairs, &structs, host);
@@ -1080,13 +1087,14 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         let h = handles[idx];
         let c_val = cfg.catchment_c.unwrap_or(DEFAULT_C);
         let tc_val = cfg.catchment_tc.unwrap_or(10.0);
-        if let Some(ent) = find_structure_mut(host, h) {
-            if let Some(mut info) = data::read_structure_info(ent) {
+        if let Some(mut ent) = find_structure(host, h) {
+            if let Some(mut info) = data::read_structure_info(&ent) {
                 if info.kind != NodeKind::Outfall {
                     info.area = area;
                     info.c = c_val;
                     info.tc_inlet = tc_val;
-                    data::write_structure_info(ent, &info);
+                    data::write_structure_info(&mut ent, &info);
+                    let _ = host.update_entity(ent);
                     catchment_note = format!(
                         " Headwater inlet {:X}: area={area:.2} ac C={c_val:.2} Tc={tc_val:.0} min.",
                         h.value()

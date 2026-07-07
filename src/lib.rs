@@ -29,7 +29,6 @@ mod state;
 mod style;
 mod validation;
 mod write_labels;
-mod xdata_persist;
 
 use ocs_plugin_api::host::{BuiltinPlugin, HostApi};
 use ocs_plugin_api::manifest::PluginManifest;
@@ -92,8 +91,11 @@ impl CadModule for HydroCompleteModule {
         "HydroComplete"
     }
 
-    fn ribbon_groups(&self) -> Vec<RibbonGroup> {
-        vec![
+    fn ribbon_groups(&self) -> &[RibbonGroup] {
+        // Host contract since OCS 0.7: return a borrowed slice; build the
+        // tree once and cache it.
+        static GROUPS: std::sync::OnceLock<Vec<RibbonGroup>> = std::sync::OnceLock::new();
+        GROUPS.get_or_init(|| vec![
             RibbonGroup {
                 title: "Network",
                 tools: vec![
@@ -156,7 +158,7 @@ impl CadModule for HydroCompleteModule {
                     RibbonItem::Tool(tool("HC_LICENSE", "License", "🔑")),
                 ],
             },
-        ]
+        ])
     }
 }
 

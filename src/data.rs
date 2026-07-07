@@ -496,44 +496,18 @@ pub fn set_pipe_diameter(e: &mut EntityType, new_dia: f64) -> bool {
     true
 }
 
-/// Recompute Tc from catchments and write onto structure entities in the document.
-pub fn apply_tc_in_document<'a>(
-    entities: impl Iterator<Item = &'a EntityType>,
-    entities_mut: impl Iterator<Item = &'a mut EntityType>,
-) -> Result<usize, String> {
-    let drawn = drawn_network_from_entities(entities)?;
+/// Recompute Tc from catchments and return the updated structure entities
+/// (clones) for the caller to push back via `host.update_entity`
+/// (out-of-process, `document_mut()` is a local snapshot).
+pub fn apply_tc_in_document(entities: &[EntityType]) -> Result<Vec<EntityType>, String> {
+    let drawn = drawn_network_from_entities(entities.iter())?;
     let mut tc_by_handle: HashMap<Handle, f64> = HashMap::new();
     for (node, &h) in drawn.network.nodes.iter().zip(drawn.node_handles.iter()) {
         if node.kind != NodeKind::Outfall {
             tc_by_handle.insert(h, node.tc_inlet);
         }
     }
-    let mut updated = 0;
-    for ent in entities_mut {
-        let h = ent.common().handle;
-        let Some(&tc) = tc_by_handle.get(&h) else {
-            continue;
-        };
-        let EntityType::Circle(_) = ent else { continue };
-        let xd = &mut ent.common_mut().extended_data;
-        let Some(old) = xd.records().iter().find(|r| r.application_name == APP_STRUCT) else {
-            continue;
-        };
-        if old.values.len() < 5 {
-            continue;
-        }
-        let kind = match &old.values[0] {
-            XDataValue::String(s) => parse_kind(s),
-            _ => continue,
-        };
-        let invert = real(&old.values[1]).unwrap_or(0.0);
-        let rim = real(&old.values[2]).unwrap_or(0.0);
-        let area = real(&old.values[3]).unwrap_or(0.0);
-        let c = real(&old.values[4]).unwrap_or(0.0);
-        replace_xdata_record(xd, APP_STRUCT, structure_xdata_tc(kind, invert, rim, area, c, tc));
-        updated += 1;
-    }
-    Ok(updated)
+    Ok(apply_tc_map(entities.iter().cloned(), &tc_by_handle))
 }
 
 /// Write computed inlet Tc back onto structure circle entities (by handle order).
@@ -640,14 +614,15 @@ pub fn network_from_entities<'a>(entities: impl Iterator<Item = &'a EntityType>)
 }
 
 /// Apply precomputed Tc values (by structure handle) to matching circle entities' XDATA.
-/// Uses the replace helper (no record clones for update). Unifies apply paths.
-/// Called after building Tc map from a read pass (avoids simultaneous borrow at call sites).
-pub fn apply_tc_map<'a>(
-    entities_mut: impl Iterator<Item = &'a mut EntityType>,
+/// Operates on entity clones (out-of-process, `document_mut()` is a local
+/// snapshot) and returns the changed entities for the caller to push back via
+/// `host.update_entity`.
+pub fn apply_tc_map(
+    entities: impl Iterator<Item = EntityType>,
     tc_by_handle: &HashMap<Handle, f64>,
-) -> usize {
-    let mut updated = 0;
-    for ent in entities_mut {
+) -> Vec<EntityType> {
+    let mut changed = Vec::new();
+    for mut ent in entities {
         let h = ent.common().handle;
         let Some(&tc) = tc_by_handle.get(&h) else { continue; };
         let EntityType::Circle(_) = ent else { continue };
@@ -663,9 +638,9 @@ pub fn apply_tc_map<'a>(
         let area = real(&old.values[3]).unwrap_or(0.0);
         let c = real(&old.values[4]).unwrap_or(0.0);
         replace_xdata_record(xd, APP_STRUCT, structure_xdata_tc(kind, invert, rim, area, c, tc));
-        updated += 1;
+        changed.push(ent);
     }
-    updated
+    changed
 }
 
 fn assemble_network(structs: &[StructRec], pipes_raw: &[PipeRec]) -> Result<Network, String> {
