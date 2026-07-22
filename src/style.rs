@@ -48,14 +48,21 @@ pub fn apply_colors<'a>(
 }
 
 /// Color-code pipes and structures from an analysis result.
-pub fn apply_analysis_style<'a>(
-    entities: impl Iterator<Item = &'a mut EntityType>,
+///
+/// Takes entity clones (out-of-process, `document_mut()` is a local snapshot)
+/// and returns `(surcharged, flooded, recolored)`; the caller pushes the
+/// recolored entities back via `host.update_entity`.
+pub fn apply_analysis_style(
+    entities: impl Iterator<Item = EntityType>,
     drawn: &DrawnNetwork,
     analysis: &Analysis,
-) -> (usize, usize) {
+) -> (usize, usize, Vec<EntityType>) {
     let assignments = style_assignments(drawn, analysis);
     let surcharged = analysis.pipes.iter().filter(|p| p.surcharged).count();
     let flooded = analysis.nodes.iter().filter(|n| n.surcharge_to_surface).count();
-    let _ = apply_colors(entities, &assignments);
-    (surcharged, flooded)
+    let mut recolored: Vec<EntityType> = entities
+        .filter(|e| assignments.iter().any(|(h, _)| *h == e.common().handle))
+        .collect();
+    let _ = apply_colors(recolored.iter_mut(), &assignments);
+    (surcharged, flooded, recolored)
 }

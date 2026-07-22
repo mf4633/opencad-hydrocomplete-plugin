@@ -14,13 +14,10 @@ crate-type = ["cdylib"]
 name = "opencad_hydrocomplete_plugin"
 
 [dependencies]
-ocs_plugin_api = { git = "https://github.com/HakanSeven12/OpenCADStudio", rev = "495455180865785ae8cc1875e61ef9bc03494cc5", features = ["host"] }
-acadrust = "0.3.4"
+ocs_plugin_api = { git = "https://github.com/HakanSeven12/OpenCADStudio", rev = "23d9a261b14b0d3799397e6e466332f82d9ab43a", features = ["host"] }
+acadrust = "0.4.1"
 stormsewer = { path = "crates/stormsewer" }
 hydrocomplete = { path = "crates/hydrocomplete" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
-
-[patch.crates-io]
-acadrust = { git = "https://github.com/HakanSeven12/acadrust", branch = "main" }

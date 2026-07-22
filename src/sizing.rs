@@ -54,18 +54,20 @@ pub fn plan_size_updates<'a>(
     Ok((updates, report, pending))
 }
 
-/// Write planned diameter updates onto matching pipe entities.
-pub fn apply_updates<'a>(entities: impl Iterator<Item = &'a mut EntityType>, updates: &[PipeDiameterUpdate]) -> usize {
-    let mut applied = 0usize;
-    for e in entities {
+/// Write planned diameter updates onto matching pipe entity clones
+/// (out-of-process, `document_mut()` is a local snapshot) and return the
+/// changed entities for the caller to push back via `host.update_entity`.
+pub fn apply_updates(entities: impl Iterator<Item = EntityType>, updates: &[PipeDiameterUpdate]) -> Vec<EntityType> {
+    let mut changed = Vec::new();
+    for mut e in entities {
         let h = e.common().handle;
         if let Some(u) = updates.iter().find(|u| u.handle == h) {
-            if data::set_pipe_diameter(e, u.new_diameter_ft) {
-                applied += 1;
+            if data::set_pipe_diameter(&mut e, u.new_diameter_ft) {
+                changed.push(e);
             }
         }
     }
-    applied
+    changed
 }
 
 #[cfg(test)]
@@ -124,8 +126,15 @@ mod tests {
         ];
         let p = stormsewer::params::StormAnalysisParams::municipal();
         let (updates, _, _) = plan_size_updates(ents.iter(), &p).expect("plan");
-        let applied = apply_updates(ents.iter_mut(), &updates);
-        assert!(applied >= 1);
+        let changed = apply_updates(ents.iter().cloned(), &updates);
+        assert!(!changed.is_empty());
+        // Mimic host.update_entity: replace each changed entity by handle.
+        for c in changed {
+            let h = c.common().handle;
+            if let Some(slot) = ents.iter_mut().find(|e| e.common().handle == h) {
+                *slot = c;
+            }
+        }
         let drawn = data::drawn_network_from_entities(ents.iter()).unwrap();
         assert!(drawn.network.pipes[0].diameter > 0.5);
     }

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use ocs_plugin_api::host::{ensure_plugin_state, HostApi};
+use ocs_plugin_api::host::HostApi;
 
 use acadrust::EntityType;
 use acadrust::Handle;
@@ -13,7 +13,6 @@ use super::drawing_params;
 use super::edit;
 use super::civil_import;
 use super::landxml_import;
-use super::manifest::PLUGIN_ID;
 use super::params_cmd;
 use super::background;
 use super::interactive::{AttachBackgroundInteractive, PlacePipeInteractive, PlaceStructureInteractive};
@@ -21,14 +20,13 @@ use super::network_edit;
 use super::placement;
 use super::report_export;
 use super::sizing;
-use super::state::HydroTabState;
 use super::validation;
 use super::{data, style, write_labels};
 
 fn tab_params(host: &mut dyn HostApi) -> stormsewer::params::StormAnalysisParams {
     let from_drawing =
         drawing_params::read_params_from_entities(host.document().entities());
-    let state = ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default);
+    let mut state = crate::state::state();
     if let Some(p) = from_drawing {
         state.params = p;
     }
@@ -39,8 +37,17 @@ fn entities<'a>(host: &'a dyn HostApi) -> impl Iterator<Item = &'a EntityType> {
     host.document().entities()
 }
 
-fn entities_mut<'a>(host: &'a mut dyn HostApi) -> impl Iterator<Item = &'a mut EntityType> {
-    host.document_mut().entities_mut()
+/// Push mutated entity clones back to the host document. Out-of-process,
+/// `document_mut()` is a local snapshot: `update_entity` is the RPC that
+/// commits an in-place edit to the real document, keyed by the clone's handle.
+fn update_entities(host: &mut dyn HostApi, changed: Vec<EntityType>) -> usize {
+    let mut n = 0usize;
+    for ent in changed {
+        if host.update_entity(ent) {
+            n += 1;
+        }
+    }
+    n
 }
 
 /// Everything after the first token (preserves spaces in file paths).
@@ -69,10 +76,10 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
         return false;
     }
 
-    // DWG open leaves XDATA in raw blobs only; hydrate before reading entities.
-    crate::xdata_persist::hydrate_host(host);
-
-    let handled = match cmd {
+    // XDATA records round-trip natively since acadrust e8e422a (records encode
+    // to EED on DWG save and decode back on read), so commands read and write
+    // tags through the host API with no extra codec pass.
+    match cmd {
         "HC_VALIDATE" => {
             // Integrity checks (XDATA well-formed, handles resolve) ...
             let mut report = validation::validate_entities(entities(host));
@@ -120,8 +127,9 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                                 analysis::run_analysis_on_network(&drawn.network, &params)
                             {
                                 host.push_undo("HC_STYLE");
-                                let (sur, flood) =
-                                    style::apply_analysis_style(entities_mut(host), &drawn, &analysis);
+                                let (sur, flood, styled) = style::apply_analysis_style(
+                                    entities(host).cloned(), &drawn, &analysis);
+                                let _ = update_entities(host, styled);
                                 if sur > 0 || flood > 0 {
                                     host.set_dirty();
                                     host.push_info(&format!(
@@ -146,8 +154,9 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                         }
                         if let Ok(drawn) = data::drawn_network_from_entities(entities(host)) {
                             host.push_undo("HC_STYLE");
-                            let (sur, flood) =
-                                style::apply_analysis_style(entities_mut(host), &drawn, &analysis);
+                            let (sur, flood, styled) = style::apply_analysis_style(
+                                entities(host).cloned(), &drawn, &analysis);
+                            let _ = update_entities(host, styled);
                             if sur > 0 || flood > 0 {
                                 host.set_dirty();
                                 host.push_info(&format!(
@@ -247,7 +256,8 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                         host.push_info("HydroComplete: all pipes already meet sizing criteria.");
                     } else {
                         host.push_undo("HC_SIZE");
-                        let applied = sizing::apply_updates(entities_mut(host), &updates);
+                        let resized = sizing::apply_updates(entities(host).cloned(), &updates);
+                        let applied = update_entities(host, resized);
                         host.bump_geometry();
                         host.set_dirty();
                         host.push_info(&format!(
@@ -276,7 +286,8 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                         HashMap::new()
                     }
                 };
-            let updated = data::apply_tc_map(entities_mut(host), &tc_by_handle);
+            let changed = data::apply_tc_map(entities(host).cloned(), &tc_by_handle);
+            let updated = update_entities(host, changed);
             if updated > 0 || !tc_by_handle.is_empty() {
                 host.set_dirty();
                 host.bump_geometry();
@@ -289,8 +300,8 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
         cmd if cmd == "HC_PARAMS" || cmd.starts_with("HC_PARAMS ") => {
             let rest = cmd.trim_start_matches("HC_PARAMS").trim();
             let outcome = {
-                let state = ensure_plugin_state(host, PLUGIN_ID, HydroTabState::default);
-                match params_cmd::apply_params(state, rest) {
+                let mut state = crate::state::state();
+                match params_cmd::apply_params(&mut state, rest) {
                     Ok(msg) => Ok((state.params.clone(), state.preset_key.clone(), msg)),
                     Err(e) => Err(e),
                 }
@@ -815,11 +826,5 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
             true
         }
         _ => false,
-    };
-
-    // Encode records → raw_dwg_eed + APPIDs so OCS DWG save retains HC metadata.
-    if handled {
-        crate::xdata_persist::commit_host(host);
     }
-    handled
 }

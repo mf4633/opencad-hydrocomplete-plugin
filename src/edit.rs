@@ -20,13 +20,14 @@ fn parse_handle(s: &str) -> Option<Handle> {
     data::parse_entity_handle(s)
 }
 
-fn find_entity_mut<'a>(
-    host: &'a mut dyn HostApi,
-    handle: Handle,
-) -> Option<&'a mut EntityType> {
-    host.document_mut()
-        .entities_mut()
+/// Clone the entity with `handle` from the document snapshot. Out-of-process,
+/// mutating `document_mut()` does not propagate to the host: edits go to a
+/// clone and are committed back via `host.update_entity`.
+fn find_entity(host: &dyn HostApi, handle: Handle) -> Option<EntityType> {
+    host.document()
+        .entities()
         .find(|e| e.common().handle == handle)
+        .cloned()
 }
 
 pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String> {
@@ -52,11 +53,11 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
 
     host.push_undo("HC_EDIT");
 
-    let Some(ent) = find_entity_mut(host, handle) else {
+    let Some(mut ent) = find_entity(host, handle) else {
         return Err(format!("Entity handle {} not found", handle.value()));
     };
 
-    if let Some(mut info) = data::read_structure_info(ent) {
+    if let Some(mut info) = data::read_structure_info(&ent) {
         for (field, value) in &changes {
             match field.as_str() {
                 "invert" => info.invert = parse_num(value).ok_or_else(|| format!("bad invert: {value}"))?,
@@ -76,7 +77,10 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
             info.area = 0.0;
             info.c = 0.0;
         }
-        data::write_structure_info(ent, &info);
+        data::write_structure_info(&mut ent, &info);
+        if !host.update_entity(ent) {
+            return Err(format!("Entity handle {} not found", handle.value()));
+        }
         host.bump_geometry();
         host.set_dirty();
         return Ok(format!(
@@ -87,7 +91,7 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
         ));
     }
 
-    if let Some(mut info) = data::read_pipe_info(ent) {
+    if let Some(mut info) = data::read_pipe_info(&ent) {
         for (field, value) in &changes {
             match field.as_str() {
                 "diameter" | "dia" => {
@@ -102,11 +106,14 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
         if info.diameter <= 0.0 {
             return Err("diameter must be > 0".into());
         }
-        let EntityType::Line(_) = ent else {
+        let EntityType::Line(_) = &ent else {
             return Err("Pipe entity must be a LINE".into());
         };
         let xd = &mut ent.common_mut().extended_data;
         data::replace_pipe_xdata(xd, pipe_xdata(info.diameter, info.n, info.from, info.to));
+        if !host.update_entity(ent) {
+            return Err(format!("Entity handle {} not found", handle.value()));
+        }
         host.bump_geometry();
         host.set_dirty();
         return Ok(format!(
