@@ -10,6 +10,9 @@ pub const DEFAULT_VALIDATE_URL: &str =
 
 pub const TOKEN_PREFIX: &str = "hc_live_";
 
+/// In-product activation command, for status messages.
+const ACTIVATE_CMD: &str = "HC_ACTIVATE";
+
 /// Server-side SKU identifier for this client (separate from Civil 3D `civil3d` keys).
 pub const PRODUCT_ID: &str = "opencad";
 
@@ -20,6 +23,17 @@ pub const PURCHASE_URL: &str = "https://hydrocomplete.com/opencad";
 pub const LICENSE_FILE_NAME: &str = "opencad-license.json";
 
 pub const STUB_VALIDITY_DAYS: u64 = 365;
+
+/// Re-check the key with the server once the cached validation is this old.
+pub const REVALIDATE_AFTER_DAYS: u64 = 7;
+/// If the server cannot be reached, keep honouring the cached license for this
+/// long after the last successful validation, then require re-activation.
+pub const OFFLINE_GRACE_DAYS: u64 = 30;
+/// Do not hit the network for a re-check more than once per day.
+pub const RECHECK_THROTTLE_DAYS: u64 = 1;
+/// Short timeouts for the silent background re-check so a gated command is not
+/// held up for long when offline (activation itself uses longer timeouts).
+const RECHECK_TIMEOUT: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LicenseValidationMode {
@@ -40,6 +54,10 @@ pub struct LicenseRecord {
     pub last_validated: String,
     #[serde(default, rename = "validationMode")]
     pub validation_mode: String,
+    /// Last time a silent re-check was attempted (success or not); throttles
+    /// network attempts while offline.
+    #[serde(default, rename = "lastCheckAttempt")]
+    pub last_check_attempt: String,
 }
 
 #[derive(Debug, Clone)]
@@ -72,6 +90,60 @@ pub fn is_dev_bypass_enabled() -> bool {
             .map(|v| v == "1")
             .unwrap_or(false)
     }
+}
+
+/// The `hc_live_*` key behind a stored token. Legacy license files (before the
+/// re-validation release) stored the server's base64 access token, whose
+/// payload is `{"licenseKey": ...}` + a signature after the last dot.
+pub fn underlying_license_key(token: &str) -> String {
+    let t = token.trim();
+    if t.starts_with(TOKEN_PREFIX) {
+        return t.to_string();
+    }
+    let decoded = base64_decode_loose(t);
+    let Some(decoded) = decoded else {
+        return t.to_string();
+    };
+    let payload = match decoded.rfind('.') {
+        Some(i) => &decoded[..i],
+        None => decoded.as_str(),
+    };
+    serde_json::from_str::<serde_json::Value>(payload)
+        .ok()
+        .and_then(|v| v.get("licenseKey").and_then(|k| k.as_str()).map(str::to_string))
+        .filter(|k| k.starts_with(TOKEN_PREFIX))
+        .unwrap_or_else(|| t.to_string())
+}
+
+/// Minimal standard-alphabet base64 decoder (no padding required) so the
+/// plugin does not need another dependency for one legacy path.
+fn base64_decode_loose(s: &str) -> Option<String> {
+    fn val(c: u8) -> Option<u32> {
+        match c {
+            b'A'..=b'Z' => Some((c - b'A') as u32),
+            b'a'..=b'z' => Some((c - b'a') as u32 + 26),
+            b'0'..=b'9' => Some((c - b'0') as u32 + 52),
+            b'+' | b'-' => Some(62),
+            b'/' | b'_' => Some(63),
+            _ => None,
+        }
+    }
+    let mut out = Vec::with_capacity(s.len() * 3 / 4);
+    let mut acc: u32 = 0;
+    let mut bits = 0;
+    for &c in s.as_bytes() {
+        if c == b'=' {
+            break;
+        }
+        let v = val(c)?;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push(((acc >> bits) & 0xFF) as u8);
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 pub fn is_well_formed_token(token: &str) -> bool {
@@ -119,6 +191,7 @@ pub fn write_license_file(path: &Path, record: &LicenseRecord) -> Result<(), Str
 
 pub struct LicenseActivator {
     validate_url: String,
+    timeout: Duration,
 }
 
 impl Default for LicenseActivator {
@@ -131,11 +204,17 @@ impl LicenseActivator {
     pub fn new() -> Self {
         Self {
             validate_url: DEFAULT_VALIDATE_URL.into(),
+            timeout: Duration::from_secs(15),
         }
     }
 
     pub fn with_validate_url(mut self, url: impl Into<String>) -> Self {
         self.validate_url = url.into();
+        self
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
         self
     }
 
@@ -164,7 +243,8 @@ impl LicenseActivator {
         if existing.product != PRODUCT_ID {
             return fail(wrong_product_message());
         }
-        self.activate_core(&existing.email, &existing.token, license_path)
+        let key = underlying_license_key(&existing.token);
+        self.activate_core(&existing.email, &key, license_path)
     }
 
     fn activate_core(&self, email: &str, token: &str, license_path: &Path) -> LicenseActivationResult {
@@ -225,14 +305,16 @@ impl LicenseActivator {
     }
 
     fn try_online_validation(&self, email: &str, token: &str) -> OnlineValidationAttempt {
+        let token = underlying_license_key(token);
+        let token = token.as_str();
         let body = serde_json::json!({
             "licenseKey": token,
             "product": PRODUCT_ID,
             "features": ["reports", "export"],
         });
         let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(15))
-            .timeout_read(Duration::from_secs(15))
+            .timeout_connect(self.timeout)
+            .timeout_read(self.timeout)
             .user_agent(&user_agent_string())
             .build();
         match agent
@@ -271,11 +353,10 @@ impl LicenseActivator {
                         .map(|d| format_iso8601(d.as_secs()))
                         .unwrap_or_default()
                 });
-                let stored_token = v
-                    .get("accessToken")
-                    .and_then(|x| x.as_str())
-                    .unwrap_or(token)
-                    .to_string();
+                // Store the license key itself. Earlier builds stored the
+                // server's accessToken here, which cannot be re-validated;
+                // `underlying_license_key` unwraps those legacy files.
+                let stored_token = token.to_string();
                 let now = format_iso8601(
                     SystemTime::now()
                         .duration_since(UNIX_EPOCH)
@@ -292,6 +373,30 @@ impl LicenseActivator {
                         &now,
                         "online",
                     )),
+                    ..Default::default()
+                }
+            }
+            // ureq reports 4xx/5xx as Err. A 401/403 (or an explicit
+            // `valid:false` body) is the server rejecting the key — revoked,
+            // expired or wrong product — not a network failure, and must not
+            // fall into the offline-grace path.
+            Err(ureq::Error::Status(code, resp)) => {
+                let body = resp.into_string().unwrap_or_default();
+                let parsed = serde_json::from_str::<serde_json::Value>(&body).ok();
+                let explicit_invalid = parsed
+                    .as_ref()
+                    .and_then(|v| v.get("valid"))
+                    .and_then(|x| x.as_bool())
+                    == Some(false);
+                let rejected = matches!(code, 401 | 403) || explicit_invalid;
+                let detail = parsed
+                    .as_ref()
+                    .and_then(read_error_message)
+                    .unwrap_or_else(|| format!("Server returned {code}."));
+                OnlineValidationAttempt {
+                    was_network_attempt: true,
+                    server_said_invalid: rejected,
+                    error_message: Some(detail),
                     ..Default::default()
                 }
             }
@@ -327,6 +432,7 @@ fn new_license_record(
         product: PRODUCT_ID.into(),
         last_validated: last_validated.to_string(),
         validation_mode: validation_mode.into(),
+        last_check_attempt: String::new(),
     }
 }
 
@@ -445,7 +551,78 @@ pub fn is_pro_enabled() -> bool {
     if is_dev_bypass_enabled() {
         return true;
     }
-    try_read_license(&license_file_path()).is_some()
+    let path = license_file_path();
+    let Some(record) = try_read_license(&path) else {
+        return false;
+    };
+    matches!(revalidate_if_stale(&path, record), Revalidation::Current | Revalidation::OfflineGrace)
+}
+
+/// Outcome of the silent periodic re-check performed by [`is_pro_enabled`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Revalidation {
+    /// Validated recently, or re-validated online just now.
+    Current,
+    /// Server unreachable; cached license still inside the offline grace window.
+    OfflineGrace,
+    /// Server unreachable and the grace window has expired; re-activation required.
+    GraceExpired,
+    /// Server explicitly rejected the key (revoked / expired); license file removed.
+    Revoked,
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+fn age_days(iso: &str) -> Option<u64> {
+    let then = parse_rfc3339(iso)?
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    Some(now_secs().saturating_sub(then) / 86400)
+}
+
+/// Re-check a locally valid license against the server when its last
+/// validation is older than [`REVALIDATE_AFTER_DAYS`]. Network failures fall
+/// back to the cached license for [`OFFLINE_GRACE_DAYS`]; explicit rejection
+/// deletes the cached file so a revoked key stops working within a week.
+pub fn revalidate_if_stale(path: &Path, record: LicenseRecord) -> Revalidation {
+    // Stub / bypass records never came from the server; leave them alone.
+    if record.validation_mode != "online" {
+        return Revalidation::Current;
+    }
+    let validated_days = age_days(&record.last_validated).unwrap_or(u64::MAX);
+    if validated_days < REVALIDATE_AFTER_DAYS {
+        return Revalidation::Current;
+    }
+    let attempted_days = age_days(&record.last_check_attempt).unwrap_or(u64::MAX);
+    let past_grace = validated_days >= OFFLINE_GRACE_DAYS;
+    if attempted_days < RECHECK_THROTTLE_DAYS {
+        // Tried recently and could not reach the server; do not retry yet.
+        return if past_grace { Revalidation::GraceExpired } else { Revalidation::OfflineGrace };
+    }
+
+    let activator = LicenseActivator::new().with_timeout(RECHECK_TIMEOUT);
+    let attempt = activator.try_online_validation(&record.email, &record.token);
+    if attempt.success {
+        if let Some(fresh) = attempt.record {
+            let _ = write_license_file(path, &fresh);
+        }
+        return Revalidation::Current;
+    }
+    if attempt.server_said_invalid {
+        let _ = std::fs::remove_file(path);
+        return Revalidation::Revoked;
+    }
+    // Unreachable / bad response: stamp the attempt so we stay quiet for a day.
+    let mut stamped = record;
+    stamped.last_check_attempt = format_iso8601(now_secs());
+    let _ = write_license_file(path, &stamped);
+    if past_grace { Revalidation::GraceExpired } else { Revalidation::OfflineGrace }
 }
 
 pub fn status_label() -> String {
@@ -454,10 +631,17 @@ pub fn status_label() -> String {
     }
     let path = license_file_path();
     if let Some(license) = try_read_license(&path) {
+        let validated_days = age_days(&license.last_validated).unwrap_or(0);
+        if license.validation_mode == "online" && validated_days >= OFFLINE_GRACE_DAYS {
+            return format!(
+                "Pro ({PRODUCT_LABEL}, licensed to {}) — NOT re-validated in {validated_days} days; connect and run {ACTIVATE_CMD} to keep Pro features",
+                license.email
+            );
+        }
         if let Some(expires) = format_expiry_date(&license.expires) {
             return format!(
-                "Pro ({PRODUCT_LABEL}, licensed to {}, expires {expires})",
-                license.email
+                "Pro ({PRODUCT_LABEL}, licensed to {}, expires {expires}, last validated {} days ago)",
+                license.email, validated_days
             );
         }
         return format!(
@@ -530,6 +714,79 @@ fn format_expiry_date(iso: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn record_validated_days_ago(days: u64) -> LicenseRecord {
+        let now = now_secs();
+        let mut r = new_license_record(
+            "user@example.com",
+            "hc_live_abcdefgh",
+            &format_iso8601(now + 365 * 86400),
+            &format_iso8601(now.saturating_sub(days * 86400)),
+            "online",
+        );
+        r.last_check_attempt = format_iso8601(now); // throttled: no network in tests
+        r
+    }
+
+    #[test]
+    fn fresh_license_is_current_without_network() {
+        let dir = std::env::temp_dir().join(format!("lic-fresh-{}", std::process::id()));
+        let path = dir.join(LICENSE_FILE_NAME);
+        assert_eq!(revalidate_if_stale(&path, record_validated_days_ago(1)), Revalidation::Current);
+    }
+
+    #[test]
+    fn stale_but_throttled_license_keeps_offline_grace() {
+        let dir = std::env::temp_dir().join(format!("lic-stale-{}", std::process::id()));
+        let path = dir.join(LICENSE_FILE_NAME);
+        assert_eq!(
+            revalidate_if_stale(&path, record_validated_days_ago(REVALIDATE_AFTER_DAYS + 1)),
+            Revalidation::OfflineGrace
+        );
+    }
+
+    #[test]
+    fn grace_expires_after_offline_window() {
+        let dir = std::env::temp_dir().join(format!("lic-grace-{}", std::process::id()));
+        let path = dir.join(LICENSE_FILE_NAME);
+        assert_eq!(
+            revalidate_if_stale(&path, record_validated_days_ago(OFFLINE_GRACE_DAYS + 1)),
+            Revalidation::GraceExpired
+        );
+    }
+
+    #[test]
+    fn offline_stub_records_are_never_rechecked() {
+        let dir = std::env::temp_dir().join(format!("lic-stub-{}", std::process::id()));
+        let path = dir.join(LICENSE_FILE_NAME);
+        let mut r = record_validated_days_ago(400);
+        r.validation_mode = "offline-stub".into();
+        assert_eq!(revalidate_if_stale(&path, r), Revalidation::Current);
+    }
+
+    #[test]
+    fn legacy_access_token_unwraps_to_license_key() {
+        // base64("{\"licenseKey\":\"hc_live_ss_abc123\",\"type\":\"x\"}.sig")
+        let payload = "{\"licenseKey\":\"hc_live_ss_abc123\",\"type\":\"x\"}.deadbeef";
+        let enc = {
+            const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            let b = payload.as_bytes();
+            let mut o = String::new();
+            for ch in b.chunks(3) {
+                let n = (ch[0] as u32) << 16
+                    | (*ch.get(1).unwrap_or(&0) as u32) << 8
+                    | *ch.get(2).unwrap_or(&0) as u32;
+                o.push(T[(n >> 18) as usize & 63] as char);
+                o.push(T[(n >> 12) as usize & 63] as char);
+                o.push(if ch.len() > 1 { T[(n >> 6) as usize & 63] as char } else { '=' });
+                o.push(if ch.len() > 2 { T[n as usize & 63] as char } else { '=' });
+            }
+            o
+        };
+        assert_eq!(underlying_license_key(&enc), "hc_live_ss_abc123");
+        assert_eq!(underlying_license_key("hc_live_plain00"), "hc_live_plain00");
+        assert_eq!(underlying_license_key("garbage"), "garbage");
+    }
 
     #[test]
     fn well_formed_token() {

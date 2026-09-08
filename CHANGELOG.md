@@ -4,6 +4,27 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.1] - 2026-09-08
+
+### Added
+
+- **Periodic online re-validation.** A cached Pro license is re-checked with the
+  server every 7 days (silently, 4 s timeout, at most one attempt per day when
+  offline). Server rejection deletes the cached license; unreachable server =
+  30-day offline grace after the last good check, then `HC_ACTIVATE` again.
+
+### Fixed
+
+- 401/403 from the server is now classified as rejection, not a network error.
+- The license file stores the `hc_live_*` key itself. Earlier builds stored the
+  server access token, which cannot be re-validated; legacy files are unwrapped
+  transparently on the first re-check.
+
+### Verified
+
+- On OCS v2026.36: stale rejected key → license removed, PDF blocked; freshly
+  issued key aged 10 days → refreshed on the next `HC_REPORT_PDF`, PDF written.
+
 ## [0.5.0] - 2026-09-08
 
 ### Fixed
