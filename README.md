@@ -34,7 +34,7 @@ opencad-hydrocomplete-plugin/
 
 **Plugin Manager → Add repository →** `mf4633/opencad-hydrocomplete-plugin`, pick **v0.4.3+**, **Install**, restart OCS.
 
-Requires Open CAD Studio **v2026.36** (plugin API 5). The host refuses a plugin whose rustc/acadrust fingerprint differs from its own, so each plugin release is built for one OCS release; v0.4.x (API 2) loads on the current host but never answers a command.
+Requires Open CAD Studio **v2026.36** (plugin API 5). The host refuses a plugin whose rustc/acadrust fingerprint differs from its own, so each plugin release is built for one OCS release (`ocs-host.lock` records which; the `host-drift` workflow checks the latest OCS daily and opens an issue when a rebuild is needed); v0.4.x (API 2) loads on the current host but never answers a command.
 
 ## Build
 

@@ -1,0 +1,100 @@
+name: host-drift
+
+# Open CAD Studio ships weekly and refuses a plugin whose toolchain fingerprint
+# (rustc version, acadrust revision, plugin API major) differs from the host's.
+# This job downloads the latest OCS release, reads the fingerprint the host
+# embeds in its binary, compares it with ocs-host.lock (what this plugin was
+# last built for) and opens an issue when they differ — so a silent "Unknown
+# command" outage becomes a notification with the exact values to repin.
+
+on:
+  schedule:
+    - cron: "17 6 * * *" # daily 06:17 UTC (OCS tags land on weekends)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read latest OCS host fingerprint
+        id: host
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh release view --repo HakanSeven12/OpenCADStudio --json tagName --jq .tagName)
+          asset=$(gh release view --repo HakanSeven12/OpenCADStudio --json assets \
+                  --jq '.assets[] | select(.name | test("windows-x86_64-portable\\.exe$")) | .name')
+          gh release download "$tag" --repo HakanSeven12/OpenCADStudio --pattern "$asset" --dir host
+          exe="host/$asset"
+          rustc=$(grep -a -o '"rustc_version":"[^"]*"' "$exe" | sort -u | head -1 | sed 's/.*:"//; s/"$//')
+          acad=$(grep -a -o '"acadrust_source":"[^"]*"' "$exe" | sort -u | head -1 | grep -o 'rev=[0-9a-f]*' | head -1 | cut -d= -f2)
+          api=$(grep -a -o '"api_version":[0-9]*' "$exe" | sort -u | head -1 | cut -d: -f2)
+          if [ -z "$rustc" ] || [ -z "$acad" ] || [ -z "$api" ]; then
+            echo "::error::could not read fingerprint from $exe (rustc='$rustc' acadrust='$acad' api='$api')"
+            exit 1
+          fi
+          {
+            echo "tag=$tag"
+            echo "rustc=$rustc"
+            echo "acadrust=$acad"
+            echo "api=$api"
+          } >> "$GITHUB_OUTPUT"
+          echo "host $tag: api=$api rustc='$rustc' acadrust=$acad"
+
+      - name: Compare with ocs-host.lock
+        id: cmp
+        run: |
+          set -euo pipefail
+          # shellcheck disable=SC1091
+          . ./ocs-host.lock
+          drift=""
+          [ "${{ steps.host.outputs.api }}" = "$API_VERSION" ] || drift="$drift api($API_VERSION→${{ steps.host.outputs.api }})"
+          [ "${{ steps.host.outputs.rustc }}" = "$RUSTC_VERSION" ] || drift="$drift rustc('$RUSTC_VERSION'→'${{ steps.host.outputs.rustc }}')"
+          [ "${{ steps.host.outputs.acadrust }}" = "$ACADRUST_REV" ] || drift="$drift acadrust($ACADRUST_REV→${{ steps.host.outputs.acadrust }})"
+          echo "drift=$drift" >> "$GITHUB_OUTPUT"
+          if [ -n "$drift" ]; then echo "DRIFT:$drift"; else echo "in sync with ${{ steps.host.outputs.tag }} (built for $OCS_TAG)"; fi
+
+      - name: Open or update drift issue
+        if: steps.cmp.outputs.drift != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.host.outputs.tag }}
+          RUSTC: ${{ steps.host.outputs.rustc }}
+          ACAD: ${{ steps.host.outputs.acadrust }}
+          API: ${{ steps.host.outputs.api }}
+          DRIFT: ${{ steps.cmp.outputs.drift }}
+        run: |
+          set -euo pipefail
+          title="Host drift: rebuild for Open CAD Studio $TAG"
+          body=$(cat <<EOF
+          Open CAD Studio **$TAG** no longer matches what this plugin was built for. The host refuses plugins whose fingerprint differs, so the marketplace build will fail to load (or load and answer "Unknown command") until it is rebuilt.
+
+          Changed:$DRIFT
+
+          Host fingerprint:
+          - plugin API: \`$API\`
+          - rustc: \`$RUSTC\`
+          - acadrust (cadcodec) rev: \`$ACAD\`
+
+          Repin (three edits + tag):
+          1. \`Cargo.toml\`: \`ocs_plugin_api\` rev → the commit of tag \`$TAG\`; both \`acadrust\` revs → \`$ACAD\`.
+          2. \`plugin.toml\`: \`api_version = $API\`.
+          3. \`ocs-host.lock\`: update the four values.
+          Then \`cargo test\`, install into \`%APPDATA%\\OpenCADStudio\\plugins\\<id>\\\`, drive it with \`OpenCADStudio --serve\`, and tag a release (CI fills in \`rustc_version\`).
+
+          _Opened automatically by the host-drift workflow._
+          EOF
+          )
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "Still drifted as of $(date -u +%F):$DRIFT"
+          else
+            gh issue create --title "$title" --body "$body" --label host-drift || gh issue create --title "$title" --body "$body"
+          fi

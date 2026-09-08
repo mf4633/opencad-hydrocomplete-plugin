@@ -1,0 +1,6 @@
+# Open CAD Studio host this plugin was last built and verified for.
+# Checked daily by .github/workflows/host-drift.yml; update with every repin.
+OCS_TAG=v2026.36
+API_VERSION=5
+RUSTC_VERSION="rustc 1.98.1 (48a229cea 2026-09-01)"
+ACADRUST_REV=5b56571a190e7a17c8f12d36390d2938b0fb72f7
