@@ -43,7 +43,7 @@ pub mod manifest {
     pub static MANIFEST: PluginManifest = PluginManifest {
         id: PLUGIN_ID,
         name: "HydroComplete",
-        version: "0.4.7",
+        version: "0.5.0",
         description: "Stormwater hydrology and hydraulics — mirrors HydroComplete.Civil3D",
         api_version: ApiVersion::CURRENT,
         ribbon_order: 45,
@@ -92,8 +92,14 @@ impl CadModule for HydroCompleteModule {
         "HydroComplete"
     }
 
-    fn ribbon_groups(&self) -> Vec<RibbonGroup> {
-        vec![
+    fn ribbon_groups(&self) -> &[RibbonGroup] {
+        static GROUPS: std::sync::OnceLock<Vec<RibbonGroup>> = std::sync::OnceLock::new();
+        GROUPS.get_or_init(build_ribbon_groups)
+    }
+}
+
+fn build_ribbon_groups() -> Vec<RibbonGroup> {
+    vec![
             RibbonGroup {
                 title: "Network",
                 tools: vec![
@@ -157,7 +163,6 @@ impl CadModule for HydroCompleteModule {
                 ],
             },
         ]
-    }
 }
 
 struct HydroCompletePlugin;

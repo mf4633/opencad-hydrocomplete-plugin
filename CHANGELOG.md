@@ -4,6 +4,30 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.0] - 2026-09-08
+
+### Fixed
+
+- **Plugin did not work on current Open CAD Studio (v2026.36).** Every v0.4.x
+  release declared plugin API 2; the host still accepts it but the ribbon reply
+  no longer decodes across the June→September API drift, so the plugin never
+  finished loading and every `HC_*` command returned "Unknown command".
+  Rebuilt against the host's `ocs_plugin_api` tag commit, `acadrust`
+  (cadcodec @5b56571) and rustc 1.98.1; `plugin.toml` now declares
+  `api_version = 5` and the `rustc_version` fingerprint (filled in by CI).
+- Per-tab parameters no longer use the host's `ensure_plugin_state`, which is
+  in-process only and panics under the out-of-process runner; they live in a
+  plugin-owned map keyed by tab id.
+- `ribbon_groups()` returns a cached slice per the current `CadModule` trait.
+- DWG round-trip tests let the document allocate handles (forced low handles
+  collide with reserved table handles in the newer acadrust).
+
+### Verified
+
+- Headless on OCS v2026.36 via `--serve`: about/license, params, LandXML
+  import, network, validate, analyze, pipes, capacity, HGL, HTML report,
+  multi-RP, PDF report (with a cached Pro license), save, reopen, re-analyze.
+
 ## [0.4.11] - 2026-06-23
 
 ### Added

@@ -32,7 +32,9 @@ jobs:
         run: |
           mkdir -p dist
           cp target/release/*.${{ matrix.ext }} "dist/${{ matrix.asset }}"
-          cp plugin.toml dist/plugin.toml
+          # Fill in the toolchain fingerprint the host checks (API >= 4).
+          sed "s|__RUSTC_VERSION__|$(rustc --version)|" plugin.toml > dist/plugin.toml
+          grep rustc_version dist/plugin.toml
       - uses: softprops/action-gh-release@v2
         with:
           files: |

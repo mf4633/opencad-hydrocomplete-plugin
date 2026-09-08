@@ -4,7 +4,7 @@ resolver = "2"
 
 [package]
 name = "opencad-hydrocomplete-plugin"
-version = "0.4.11"
+version = "0.5.0"
 edition = "2021"
 description = "HydroComplete hydrology/hydraulics add-on for Open CAD Studio — external cdylib plugin."
 license = "GPL-3.0-only"
@@ -14,13 +14,18 @@ crate-type = ["cdylib"]
 name = "opencad_hydrocomplete_plugin"
 
 [dependencies]
-ocs_plugin_api = { git = "https://github.com/HakanSeven12/OpenCADStudio", rev = "495455180865785ae8cc1875e61ef9bc03494cc5", features = ["host"] }
-acadrust = "0.3.4"
+# Pinned to the OCS release the plugin is built for (v2026.36 = plugin API 5).
+# The host rejects a plugin whose acadrust/rustc fingerprint differs, so bump
+# this rev, the acadrust rev below, and `api_version` in plugin.toml together.
+ocs_plugin_api = { git = "https://github.com/HakanSeven12/OpenCADStudio", rev = "ddbbdd27ba51b79a93e9087c68d7387cd826432b", features = ["host"] }
+acadrust = { git = "https://git@github.com/HakanSeven12/cadcodec.git", rev = "5b56571a190e7a17c8f12d36390d2938b0fb72f7", features = ["serde"] }
 stormsewer = { path = "crates/stormsewer" }
 hydrocomplete = { path = "crates/hydrocomplete" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
 
-[patch.crates-io]
-acadrust = { git = "https://github.com/HakanSeven12/acadrust", branch = "main" }
+# ocs_plugin_api depends on cadcodec at an older rev; redirect it to the exact
+# rev the host was built with (same trick as the upstream root Cargo.toml).
+[patch."https://github.com/HakanSeven12/cadcodec.git"]
+acadrust = { git = "https://git@github.com/HakanSeven12/cadcodec.git", rev = "5b56571a190e7a17c8f12d36390d2938b0fb72f7" }

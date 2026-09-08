@@ -425,34 +425,41 @@ mod tests {
             radius: 3.0,
             ..Default::default()
         });
-        s1.common_mut().handle = Handle::new(1);
         s1.common_mut()
             .extended_data
             .add_record(structure_xdata(NodeKind::Inlet, 100.0, 106.0, 1.0, 0.7));
+        // Let the document allocate handles: forcing low handles (1, 2, 3)
+        // collides with reserved table handles in acadrust >= cadcodec@5b56571
+        // and the entities vanish on DWG round-trip.
+        let h1 = doc.add_entity(s1).expect("add inlet");
 
         let mut s2 = EntityType::Circle(Circle {
             center: Vector3::new(100.0, 0.0, 0.0),
             radius: 3.0,
             ..Default::default()
         });
-        s2.common_mut().handle = Handle::new(2);
         s2.common_mut()
             .extended_data
             .add_record(structure_xdata(NodeKind::Outfall, 99.0, 104.0, 0.0, 0.0));
+        let h2 = doc.add_entity(s2).expect("add outfall");
 
         let mut p = EntityType::Line(Line::from_points(
             Vector3::new(0.0, 0.0, 0.0),
             Vector3::new(100.0, 0.0, 0.0),
         ));
-        p.common_mut().handle = Handle::new(3);
         p.common_mut()
             .extended_data
-            .add_record(pipe_xdata(1.5, 0.013, Handle::new(1), Handle::new(2)));
-
-        let _ = doc.add_entity(s1);
-        let _ = doc.add_entity(s2);
+            .add_record(pipe_xdata(1.5, 0.013, h1, h2));
         let _ = doc.add_entity(p);
         doc
+    }
+
+    /// Handle of the first structure in [`inlet_outfall_pipe_doc`].
+    fn first_structure_handle(doc: &CadDocument) -> Handle {
+        doc.entities()
+            .find(|e| matches!(e, EntityType::Circle(_)))
+            .map(|e| e.common().handle)
+            .expect("structure entity")
     }
 
     #[test]
@@ -481,7 +488,7 @@ mod tests {
             loaded.layers.contains("HC-STRUCT"),
             "HC-STRUCT layer lost on DWG round-trip"
         );
-        let h = Handle::new(1);
+        let h = first_structure_handle(&doc);
         let ent = loaded.get_entity(h).expect("structure entity");
         assert_eq!(ent.common().layer, "HC-STRUCT");
     }

@@ -1,13 +1,15 @@
 [plugin]
 id = "opencad.hydrocomplete"
 name = "HydroComplete"
-version = "0.4.11"
+version = "0.5.0"
 description = "Stormwater hydrology and hydraulics — mirrors HydroComplete.Civil3D for Open CAD Studio"
 author = "Michael Flynn"
 license = "GPL-3.0-only"
+repository = "mf4633/opencad-hydrocomplete-plugin"
 
 [opencad]
-api_version = 2
+api_version = 5
+rustc_version = "__RUSTC_VERSION__"
 ribbon_order = 45
 command_prefixes = ["HC_"]
 xdata_apps = ["HYDROCOMPLETE_STRUCT", "HYDROCOMPLETE_PIPE", "HYDROCOMPLETE_CATCHMENT", "HYDROCOMPLETE_PARAMS"]
