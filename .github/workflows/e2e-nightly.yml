@@ -34,11 +34,11 @@ on:
       ocs_version:
         description: 'Open CAD Studio release tag'
         type: string
-        default: v0.6.0
+        default: v2026.36
 
 env:
-  OCS_VERSION: ${{ github.event.inputs.ocs_version || 'v0.6.0' }}
-  OCS_EXE_NAME: OpenCADStudio-${{ github.event.inputs.ocs_version || 'v0.6.0' }}-windows-x86_64-portable.exe
+  OCS_VERSION: ${{ github.event.inputs.ocs_version || 'v2026.36' }}
+  OCS_EXE_NAME: OpenCADStudio-${{ github.event.inputs.ocs_version || 'v2026.36' }}-windows-x86_64-portable.exe
 
 jobs:
   ocs-e2e-frontend:
@@ -97,8 +97,11 @@ jobs:
     name: Civil 3D dotnet CI
     runs-on: windows-latest
     timeout-minutes: 60
-    # net8 Civil 3D plugin build needs AcMgd.dll; engine tests + net48 build should still run.
-    continue-on-error: true
+    # The net8.0-windows target needs Autodesk's AcMgd.dll, which hosted runners
+    # do not carry (scripts/ci.ps1 therefore always failed here). Run what a
+    # hosted runner CAN prove, mirroring hydrocomplete-civil3d's own CI: engine
+    # unit tests + the net48 compile against the NuGet API stubs. The full net8
+    # build belongs to the self-hosted civil3d-gui-smoke job.
 
     steps:
       - name: Checkout hydrocomplete-civil3d
@@ -109,14 +112,6 @@ jobs:
           path: hydrocomplete-civil3d
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Checkout hydrocomplete-dag (sibling for WASM staging)
-        uses: actions/checkout@v4
-        with:
-          repository: mf4633/hydrocomplete-dag
-          ref: master
-          path: hydrocomplete-dag
-          token: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
@@ -124,18 +119,16 @@ jobs:
             8.0.x
             7.0.x
 
-      - name: Install Rust + wasm-pack (DAG bundle)
-        shell: pwsh
-        run: |
-          rustup target add wasm32-unknown-unknown
-          if (-not (Get-Command wasm-pack -ErrorAction SilentlyContinue)) {
-            cargo install wasm-pack --locked
-          }
+      - name: Engine unit tests
+        working-directory: hydrocomplete-civil3d
+        run: dotnet test tests/HydroComplete.Engine.Tests/HydroComplete.Engine.Tests.csproj -c Release
 
-      - name: Run Civil 3D CI script
+      - name: Civil 3D plugin (net48 offline compile)
         shell: pwsh
         working-directory: hydrocomplete-civil3d
-        run: ./scripts/ci.ps1 -Configuration Release
+        run: >
+          dotnet build src/HydroComplete.Civil3D/HydroComplete.Civil3D.csproj
+          -c Release -p:BuildNet48=true -f net48
 
   civil3d-gui-smoke:
     name: Civil 3D GUI parity smoke

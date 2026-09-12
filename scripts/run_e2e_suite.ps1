@@ -1,7 +1,7 @@
 # HydroComplete end-to-end test suite: Rust, OCS automation, 24-145, Playwright, Civil 3D.
 param(
     [string]$Root = (Split-Path $PSScriptRoot -Parent),
-    [string]$Ocs = $(if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE } else { 'C:\Users\michael.flynn\Downloads\OpenCADStudio-v0.6.0-windows-x86_64-portable.exe' }),
+    [string]$Ocs = $(if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE } else { (Join-Path $env:USERPROFILE 'Downloads\OpenCADStudio-v2026.36-windows-x86_64-portable.exe') }),
     [string]$Civil3dRoot = $(if ($env:HC_CIVIL3D_ROOT) { $env:HC_CIVIL3D_ROOT } else { (Join-Path (Split-Path $Root -Parent) 'hydrocomplete-civil3d') }),
     [switch]$SkipRust,
     [switch]$SkipBuild,

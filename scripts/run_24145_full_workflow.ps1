@@ -1,7 +1,11 @@
 # Full 24-145 workflow: HC_CIVIL_IMPORT (v0.4.5 labels) + worksheet hydrology + analyze/report.
 $ErrorActionPreference = "Stop"
 $Root = Split-Path $PSScriptRoot -Parent
-$Ocs = "C:\Users\michael.flynn\Downloads\OpenCADStudio-v0.6.0-windows-x86_64-portable.exe"
+$Ocs = if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE } else { Join-Path $env:USERPROFILE "Downloads\OpenCADStudio-v2026.36-windows-x86_64-portable.exe" }
+# PowerShell 5.1 prefixes a UTF-8 BOM when piping to a native exe, so OCS --serve
+# rejected the first request ({"op":"new"}) as invalid JSON. Pipe without a BOM.
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $PluginDir = Join-Path $env:APPDATA "OpenCADStudio\plugins\opencad.hydrocomplete"
 $Dwg = "C:/Users/michael.flynn/Downloads/24-145 X-DRAINAGE.dwg"
 $ReportDir = Join-Path $env:USERPROFILE "Documents\HydroComplete"

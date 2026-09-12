@@ -12,7 +12,7 @@ $ErrorActionPreference = 'Stop'
 
 if (-not $Ocs) {
     $Ocs = if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE }
-    else { Join-Path $env:RUNNER_TEMP 'OpenCADStudio-v0.6.0-windows-x86_64-portable.exe' }
+    else { Join-Path $env:RUNNER_TEMP 'OpenCADStudio-v2026.36-windows-x86_64-portable.exe' }
 }
 
 if (-not $Civil3dRoot) {

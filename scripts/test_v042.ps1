@@ -1,7 +1,11 @@
 # v0.4.2 integration test: HC_PIPE_ARGS, HC_REPORT, HC_REPORT_PDF, ribbon commands.
 $ErrorActionPreference = "Stop"
-$Ocs = "C:\Users\michael.flynn\Downloads\OpenCADStudio-v0.6.0-windows-x86_64-portable.exe"
-$LandXml = "C:/Users/michael.flynn/dev/opencad-hydrocomplete-plugin/crates/stormsewer/examples/sample_landxml.xml"
+$Ocs = if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE } else { Join-Path $env:USERPROFILE "Downloads\OpenCADStudio-v2026.36-windows-x86_64-portable.exe" }
+# PowerShell 5.1 prefixes a UTF-8 BOM when piping to a native exe, so OCS --serve
+# rejected the first request ({"op":"new"}) as invalid JSON. Pipe without a BOM.
+[Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
+$OutputEncoding = New-Object System.Text.UTF8Encoding $false
+$LandXml = (Join-Path (Split-Path $PSScriptRoot -Parent) "crates/stormsewer/examples/sample_landxml.xml") -replace "\\", "/"
 $ReportDir = Join-Path $env:USERPROFILE "Documents\HydroComplete"
 
 if (-not (Test-Path $Ocs)) { throw "OCS not found: $Ocs" }
