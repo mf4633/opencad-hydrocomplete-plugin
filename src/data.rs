@@ -33,6 +33,37 @@ pub const APP_STRUCT: &str = "HYDROCOMPLETE_STRUCT";
 pub const APP_PIPE: &str = "HYDROCOMPLETE_PIPE";
 pub const APP_CATCHMENT: &str = "HYDROCOMPLETE_CATCHMENT";
 
+/// Run `f` against the document, then commit every entity it changed through
+/// `HostApi::update_entity`.
+///
+/// For an out-of-process plugin (how Open CAD Studio loads us), `document_mut()`
+/// is a local snapshot: mutating it never reaches the host, so edits made only
+/// there were silently dropped — HC_EDIT, HC_SIZE, HC_APPLYTC etc. reported
+/// success and changed nothing. `update_entity` is the sanctioned commit path
+/// (see `ocs_plugin_api::host::HostApi::update_entity`). Table edits (APPIDs,
+/// layers) made inside `f` still only land when the plugin runs in-process.
+pub fn with_document_mut<R>(
+    host: &mut dyn ocs_plugin_api::host::HostApi,
+    f: impl FnOnce(&mut acadrust::CadDocument) -> R,
+) -> R {
+    let before: HashMap<Handle, EntityType> = host
+        .document_mut()
+        .entities()
+        .map(|e| (e.common().handle, e.clone()))
+        .collect();
+    let result = f(host.document_mut());
+    let changed: Vec<EntityType> = host
+        .document_mut()
+        .entities()
+        .filter(|e| before.get(&e.common().handle) != Some(*e))
+        .cloned()
+        .collect();
+    for e in changed {
+        host.update_entity(e);
+    }
+    result
+}
+
 /// Parse an entity handle from decimal (`43`) or hex (`2B`, as shown in OCS).
 pub fn parse_entity_handle(s: &str) -> Option<Handle> {
     let t = s.trim();
@@ -1020,5 +1051,121 @@ mod tests {
             resolve_entity_handle(ents.iter(), "43").unwrap().value(),
             43
         );
+    }
+}
+
+#[cfg(test)]
+mod out_of_process_commit_tests {
+    // Regression for the silent HC_EDIT / HC_SIZE no-op on Open CAD Studio:
+    // an out-of-process host serves document_mut() from a local snapshot and
+    // only update_entity reaches the live document.
+    use super::*;
+    use acadrust::types::Vector3;
+    use acadrust::{CadDocument, Circle};
+    use ocs_plugin_api::host::{DocumentReader, HostApi, InteractiveCommand};
+    use std::any::Any;
+
+    struct SnapshotHost {
+        live: CadDocument,
+        snapshot: Option<CadDocument>,
+    }
+
+    impl HostApi for SnapshotHost {
+        fn tab_index(&self) -> usize {
+            0
+        }
+        fn document(&self) -> &CadDocument {
+            self.snapshot.as_ref().unwrap_or(&self.live)
+        }
+        fn document_mut(&mut self) -> &mut CadDocument {
+            if self.snapshot.is_none() {
+                self.snapshot = Some(self.live.clone());
+            }
+            self.snapshot.as_mut().unwrap()
+        }
+        fn update_entity(&mut self, entity: EntityType) -> bool {
+            self.snapshot = None;
+            match self.live.get_entity_mut(entity.common().handle) {
+                Some(slot) => {
+                    *slot = entity;
+                    true
+                }
+                None => false,
+            }
+        }
+        fn add_entity(&mut self, _entity: EntityType) -> Handle {
+            unimplemented!()
+        }
+        fn bump_geometry(&mut self) {}
+        fn read_record(&self, _handle: Handle, _app_name: &str) -> Option<&ExtendedDataRecord> {
+            None
+        }
+        fn write_record(&mut self, _handle: Handle, _record: ExtendedDataRecord) -> bool {
+            false
+        }
+        fn remove_record(&mut self, _handle: Handle, _app_name: &str) -> bool {
+            false
+        }
+        fn push_undo(&mut self, _label: &str) {}
+        fn set_dirty(&mut self) {}
+        fn push_info(&mut self, _msg: &str) {}
+        fn push_output(&mut self, _msg: &str) {}
+        fn push_error(&mut self, _msg: &str) {}
+        fn start_interactive(&mut self, _command: Box<dyn InteractiveCommand>) {}
+        fn plugin_state_any(&self, _plugin_id: &str) -> Option<&(dyn Any + Send + Sync)> {
+            None
+        }
+        fn plugin_state_any_mut(&mut self, _plugin_id: &str) -> Option<&mut (dyn Any + Send + Sync)> {
+            None
+        }
+        fn ensure_plugin_state_any(
+            &mut self,
+            _plugin_id: &'static str,
+            _init: &mut dyn FnMut() -> Box<dyn Any + Send + Sync>,
+        ) -> &mut (dyn Any + Send + Sync) {
+            unimplemented!()
+        }
+        fn document_reader(&self) -> Box<dyn DocumentReader + '_> {
+            unimplemented!()
+        }
+    }
+
+    fn host_with_inlet() -> (SnapshotHost, Handle) {
+        let mut doc = CadDocument::default();
+        let mut e = EntityType::Circle(Circle {
+            center: Vector3::new(0.0, 0.0, 0.0),
+            radius: 3.0,
+            ..Default::default()
+        });
+        e.common_mut()
+            .extended_data
+            .add_record(structure_xdata(NodeKind::Inlet, 100.0, 106.0, 1.0, 0.7));
+        let h = doc.add_entity(e).expect("add inlet");
+        (SnapshotHost { live: doc, snapshot: None }, h)
+    }
+
+    fn live_invert(host: &SnapshotHost, h: Handle) -> f64 {
+        read_structure_info(host.live.get_entity(h).unwrap()).unwrap().invert
+    }
+
+    fn set_invert(doc: &mut CadDocument, h: Handle, invert: f64) {
+        let ent = doc.entities_mut().find(|e| e.common().handle == h).unwrap();
+        let mut info = read_structure_info(ent).unwrap();
+        info.invert = invert;
+        write_structure_info(ent, &info);
+    }
+
+    #[test]
+    fn document_mut_alone_never_reaches_the_host() {
+        let (mut host, h) = host_with_inlet();
+        set_invert(host.document_mut(), h, 98.0);
+        assert!((live_invert(&host, h) - 100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn with_document_mut_commits_changed_entities() {
+        let (mut host, h) = host_with_inlet();
+        with_document_mut(&mut host, |doc| set_invert(doc, h, 98.0));
+        assert!((live_invert(&host, h) - 98.0).abs() < 1e-9);
     }
 }

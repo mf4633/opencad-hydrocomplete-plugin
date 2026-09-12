@@ -373,15 +373,17 @@ fn step_downstream_invert_if_flat(
     let from_info = structure_info_by_handle(host, from_h)?;
     let drop = DEFAULT_PIPE_SLOPE * length_ft;
     let target_invert = from_info.invert - drop;
-    let mut to_ent = find_structure_mut(host, to_h)?;
-    let mut to_info = data::read_structure_info(&to_ent)
-        .ok_or_else(|| format!("Structure handle {} not found", to_h.value()))?;
+    let mut to_info = structure_info_by_handle(host, to_h)?;
     if to_info.invert > from_info.invert - drop + 1e-6 {
         to_info.invert = target_invert;
         if to_info.rim <= to_info.invert {
             to_info.rim = to_info.invert + (DEFAULT_RIM - DEFAULT_INVERT);
         }
-        data::write_structure_info(&mut to_ent, &to_info);
+        data::with_document_mut(host, |doc| {
+            if let Some(ent) = doc.entities_mut().find(|e| e.common().handle == to_h) {
+                data::write_structure_info(ent, &to_info);
+            }
+        });
         host.set_dirty();
         host.bump_geometry();
         return Ok(Some(format!(
@@ -400,16 +402,6 @@ fn structure_info_by_handle(host: &dyn HostApi, handle: Handle) -> Result<data::
         }
     }
     Err(format!("Structure handle {} not found", handle.value()))
-}
-
-fn find_structure_mut<'a>(
-    host: &'a mut dyn HostApi,
-    handle: Handle,
-) -> Result<&'a mut EntityType, String> {
-    host.document_mut()
-        .entities_mut()
-        .find(|e| e.common().handle == handle)
-        .ok_or_else(|| format!("Structure handle {} not found", handle.value()))
 }
 
 fn pipe_endpoints_from_handles(

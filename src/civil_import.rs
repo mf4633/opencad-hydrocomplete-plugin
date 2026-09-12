@@ -920,9 +920,11 @@ fn apply_downstream_inverts(
                 if to_info.rim <= to_info.invert {
                     to_info.rim = to_info.invert + (DEFAULT_RIM - DEFAULT_INVERT);
                 }
-                if let Some(ent) = find_structure_mut(host, to_h) {
-                    data::write_structure_info(ent, &to_info);
-                }
+                data::with_document_mut(host, |doc| {
+                    if let Some(ent) = doc.entities_mut().find(|e| e.common().handle == to_h) {
+                        data::write_structure_info(ent, &to_info);
+                    }
+                });
             }
         }
     }
@@ -936,15 +938,6 @@ fn structure_info(host: &dyn HostApi, handle: Handle) -> Result<data::StructureI
         }
     }
     Err(format!("Structure handle {} not found", handle.value()))
-}
-
-fn find_structure_mut<'a>(
-    host: &'a mut dyn HostApi,
-    handle: Handle,
-) -> Option<&'a mut EntityType> {
-    host.document_mut()
-        .entities_mut()
-        .find(|e| e.common().handle == handle)
 }
 
 fn pipe_length_between(host: &dyn HostApi, from: Handle, to: Handle) -> Option<f64> {
@@ -1038,6 +1031,7 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
     }
 
     let mut tagged = 0usize;
+    let mut pipe_records: Vec<(Handle, acadrust::xdata::ExtendedDataRecord)> = Vec::new();
     let mut used_lines: HashSet<u64> = HashSet::new();
     for pipe in &civil_pipes {
         let Some((from_i, to_i)) = match_pipe_endpoints(&structs, pipe, cfg.match_tolerance_ft) else {
@@ -1051,26 +1045,29 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         }
         let from_h = handles[from_i];
         let to_h = handles[to_i];
-        let Some(ent) = host
-            .document_mut()
-            .entities_mut()
-            .find(|e| e.common().handle == pipe.handle)
-        else {
+        let is_line = host
+            .document()
+            .entities()
+            .any(|e| e.common().handle == pipe.handle && matches!(e, EntityType::Line(_)));
+        if !is_line {
             continue;
-        };
-        let EntityType::Line(_) = ent else {
-            continue;
-        };
+        }
         let spec = pipe_label_near_line(pipe, &pipe_labels, PIPE_LABEL_MATCH_FT);
         let dia_ft = spec
             .diameter_in
             .map(|inches| inches as f64 / 12.0)
             .unwrap_or(cfg.diameter_ft);
-        ent.common_mut()
-            .extended_data
-            .add_record(pipe_xdata(dia_ft, cfg.n, from_h, to_h));
+        pipe_records.push((pipe.handle, pipe_xdata(dia_ft, cfg.n, from_h, to_h)));
         tagged += 1;
     }
+    // One commit for all pipes: each with_document_mut snapshots the document.
+    data::with_document_mut(host, |doc| {
+        for (h, record) in pipe_records {
+            if let Some(ent) = doc.entities_mut().find(|e| e.common().handle == h) {
+                ent.common_mut().extended_data.add_record(record);
+            }
+        }
+    });
 
     apply_downstream_inverts(&handles, &pipe_pairs, &structs, host);
 
@@ -1080,20 +1077,22 @@ pub fn import_civil_sewer(host: &mut dyn HostApi, args: &str) -> Result<String, 
         let h = handles[idx];
         let c_val = cfg.catchment_c.unwrap_or(DEFAULT_C);
         let tc_val = cfg.catchment_tc.unwrap_or(10.0);
-        if let Some(ent) = find_structure_mut(host, h) {
-            if let Some(mut info) = data::read_structure_info(ent) {
-                if info.kind != NodeKind::Outfall {
-                    info.area = area;
-                    info.c = c_val;
-                    info.tc_inlet = tc_val;
-                    data::write_structure_info(ent, &info);
-                    catchment_note = format!(
-                        " Headwater inlet {:X}: area={area:.2} ac C={c_val:.2} Tc={tc_val:.0} min.",
-                        h.value()
-                    );
-                }
+        catchment_note = data::with_document_mut(host, |doc| {
+            let ent = doc.entities_mut().find(|e| e.common().handle == h)?;
+            let mut info = data::read_structure_info(ent)?;
+            if info.kind == NodeKind::Outfall {
+                return None;
             }
-        }
+            info.area = area;
+            info.c = c_val;
+            info.tc_inlet = tc_val;
+            data::write_structure_info(ent, &info);
+            Some(format!(
+                " Headwater inlet {:X}: area={area:.2} ac C={c_val:.2} Tc={tc_val:.0} min.",
+                h.value()
+            ))
+        })
+        .unwrap_or_default();
     } else if let Some(idx) = headwater_idx {
         catchment_note = format!(
             " Headwater inlet {:X} (use HC_EDIT or area/c/tc args to set catchment).",

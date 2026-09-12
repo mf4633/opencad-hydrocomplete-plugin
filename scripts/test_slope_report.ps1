@@ -120,10 +120,21 @@ Test-Report "Adverse slope" @(
     '<tr class="surcharged">'
 )
 
+# Host handle allocation changes between OCS releases (v0.6.0 gave the inlet 2B
+# = decimal 43, v2026.36 gives 31), so resolve the inlet from a dry import.
+$lxSetup = Invoke-Ocs @(
+    '{"op":"new"}'
+    "{`"op`":`"run`",`"cmd`":`"HC_LANDXML_IMPORT $LandXml`"}"
+    '{"op":"query","type":"Circle"}'
+)
+$lxH = Get-CircleHandles $lxSetup
+$lxInlet = @($lxH.Inlet) | Select-Object -First 1
+if (-not $lxInlet) { throw 'LandXML healthy: could not resolve inlet handle' }
+
 Test-Report "LandXML healthy" @(
     '{"op":"new"}'
     "{`"op`":`"run`",`"cmd`":`"HC_LANDXML_IMPORT $LandXml`"}"
-    '{"op":"run","cmd":"HC_EDIT 43 area 1.0 c 0.7 tc 12"}'
+    "{`"op`":`"run`",`"cmd`":`"HC_EDIT $lxInlet area 1.0 c 0.7 tc 12`"}"
     '{"op":"run","cmd":"HC_REPORT"}'
 ) @(
     "Network/P1"
@@ -164,7 +175,8 @@ Test-Report "HC_PIPE_ARGS serve" @(
     "Network/P2*</td><td>1.50"
     "a=81.2"
 ) @(
-    "Network/P1*</td><td>1.50</td><td>0.0010*"
+    # No wildcard between label and cells, or this also matches P2's 1.50/0.0010 row.
+    "Network/P1</td><td>1.50</td><td>0.0010*"
 )
 
 Write-Host ""

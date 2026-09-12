@@ -397,12 +397,15 @@ pub fn commit_document(doc: &mut CadDocument) {
 }
 
 /// Host wrapper: hydrate then (after edits) commit for DWG persistence.
+/// Entity changes go through `with_document_mut` so they reach an
+/// out-of-process host; the APPID/layer table entries these also add only land
+/// when the plugin runs in-process.
 pub fn hydrate_host(host: &mut dyn HostApi) {
-    hydrate_document(host.document_mut());
+    crate::data::with_document_mut(host, hydrate_document);
 }
 
 pub fn commit_host(host: &mut dyn HostApi) {
-    commit_document(host.document_mut());
+    crate::data::with_document_mut(host, commit_document);
     host.set_dirty();
 }
 

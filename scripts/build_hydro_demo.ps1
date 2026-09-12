@@ -21,11 +21,27 @@ Start-Sleep -Seconds 2
 $demoPath = ($OutDwg -replace '\\', '/')
 $landXmlJson = $LandXml -replace '\\', '/'
 
+# Host handle allocation changes between OCS releases (v0.6.0 gave the inlet 2B,
+# v2026.36 gives 31), so read the inlet (radius 3.0) handle from a dry import.
+$setup = [System.Collections.Generic.List[string]]::new()
+$prev = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+    @('{"op":"new"}', "{`"op`":`"run`",`"cmd`":`"HC_LANDXML_IMPORT $landXmlJson`"}", '{"op":"query","type":"Circle"}') |
+        & $Ocs --serve 2>&1 | ForEach-Object { $setup.Add([string]$_) }
+} finally {
+    $ErrorActionPreference = $prev
+    $Error.Clear()
+}
+$q = @($setup | Where-Object { $_ -match '"entities":\[' } | Select-Object -Last 1 | ConvertFrom-Json)
+$inletH = @($q.entities | Where-Object { $_.radius -eq 3.0 } | ForEach-Object { $_.handle }) | Select-Object -First 1
+if (-not $inletH) { throw "Could not resolve LandXML inlet handle from OCS query" }
+
 $requests = @(
     '{"op":"new"}'
     "{`"op`":`"run`",`"cmd`":`"HC_LANDXML_IMPORT $landXmlJson`"}"
     '{"op":"query","type":"Circle"}'
-    '{"op":"run","cmd":"HC_EDIT 2B area 2.0 c 0.75"}'
+    "{`"op`":`"run`",`"cmd`":`"HC_EDIT $inletH area 2.0 c 0.75`"}"
     '{"op":"run","cmd":"HC_PARAMS PRESET charlotte-nc 10"}'
     '{"op":"run","cmd":"HC_NETWORK"}'
     '{"op":"run","cmd":"HC_ANALYZE"}'

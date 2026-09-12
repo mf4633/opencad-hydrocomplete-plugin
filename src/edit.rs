@@ -20,15 +20,6 @@ fn parse_handle(s: &str) -> Option<Handle> {
     data::parse_entity_handle(s)
 }
 
-fn find_entity_mut<'a>(
-    host: &'a mut dyn HostApi,
-    handle: Handle,
-) -> Option<&'a mut EntityType> {
-    host.document_mut()
-        .entities_mut()
-        .find(|e| e.common().handle == handle)
-}
-
 pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String> {
     let tokens: Vec<&str> = args.split_whitespace().collect();
     if tokens.len() < 3 {
@@ -52,12 +43,22 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
 
     host.push_undo("HC_EDIT");
 
-    let Some(ent) = find_entity_mut(host, handle) else {
-        return Err(format!("Entity handle {} not found", handle.value()));
-    };
+    let result = data::with_document_mut(host, |doc| {
+        let Some(ent) = doc.entities_mut().find(|e| e.common().handle == handle) else {
+            return Err(format!("Entity handle {} not found", handle.value()));
+        };
+        apply_changes(ent, handle, &changes)
+    });
+    if result.is_ok() {
+        host.bump_geometry();
+        host.set_dirty();
+    }
+    result
+}
 
+fn apply_changes(ent: &mut EntityType, handle: Handle, changes: &[(String, &str)]) -> Result<String, String> {
     if let Some(mut info) = data::read_structure_info(ent) {
-        for (field, value) in &changes {
+        for (field, value) in changes {
             match field.as_str() {
                 "invert" => info.invert = parse_num(value).ok_or_else(|| format!("bad invert: {value}"))?,
                 "rim" => info.rim = parse_num(value).ok_or_else(|| format!("bad rim: {value}"))?,
@@ -77,8 +78,6 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
             info.c = 0.0;
         }
         data::write_structure_info(ent, &info);
-        host.bump_geometry();
-        host.set_dirty();
         return Ok(format!(
             "Updated structure {} invert={:.2} rim={:.2}",
             handle.value(),
@@ -88,7 +87,7 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
     }
 
     if let Some(mut info) = data::read_pipe_info(ent) {
-        for (field, value) in &changes {
+        for (field, value) in changes {
             match field.as_str() {
                 "diameter" | "dia" => {
                     info.diameter = parse_num(value).ok_or_else(|| format!("bad diameter: {value}"))?
@@ -107,8 +106,6 @@ pub fn edit_entity(host: &mut dyn HostApi, args: &str) -> Result<String, String>
         };
         let xd = &mut ent.common_mut().extended_data;
         data::replace_pipe_xdata(xd, pipe_xdata(info.diameter, info.n, info.from, info.to));
-        host.bump_geometry();
-        host.set_dirty();
         return Ok(format!(
             "Updated pipe {} diameter={:.2} n={:.3}",
             handle.value(),

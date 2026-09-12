@@ -38,10 +38,6 @@ fn entities<'a>(host: &'a dyn HostApi) -> impl Iterator<Item = &'a EntityType> {
     host.document().entities()
 }
 
-fn entities_mut<'a>(host: &'a mut dyn HostApi) -> impl Iterator<Item = &'a mut EntityType> {
-    host.document_mut().entities_mut()
-}
-
 /// Everything after the first token (preserves spaces in file paths).
 fn command_arg(cmd: &str) -> Option<&str> {
     let mut parts = cmd.splitn(2, char::is_whitespace);
@@ -120,7 +116,7 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                             {
                                 host.push_undo("HC_STYLE");
                                 let (sur, flood) =
-                                    style::apply_analysis_style(entities_mut(host), &drawn, &analysis);
+                                    data::with_document_mut(host, |doc| style::apply_analysis_style(doc.entities_mut(), &drawn, &analysis));
                                 if sur > 0 || flood > 0 {
                                     host.set_dirty();
                                     host.push_info(&format!(
@@ -146,7 +142,7 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                         if let Ok(drawn) = data::drawn_network_from_entities(entities(host)) {
                             host.push_undo("HC_STYLE");
                             let (sur, flood) =
-                                style::apply_analysis_style(entities_mut(host), &drawn, &analysis);
+                                data::with_document_mut(host, |doc| style::apply_analysis_style(doc.entities_mut(), &drawn, &analysis));
                             if sur > 0 || flood > 0 {
                                 host.set_dirty();
                                 host.push_info(&format!(
@@ -246,7 +242,7 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                         host.push_info("HydroComplete: all pipes already meet sizing criteria.");
                     } else {
                         host.push_undo("HC_SIZE");
-                        let applied = sizing::apply_updates(entities_mut(host), &updates);
+                        let applied = data::with_document_mut(host, |doc| sizing::apply_updates(doc.entities_mut(), &updates));
                         host.bump_geometry();
                         host.set_dirty();
                         host.push_info(&format!(
@@ -275,7 +271,7 @@ pub fn handle(host: &mut dyn HostApi, cmd: &str) -> bool {
                         HashMap::new()
                     }
                 };
-            let updated = data::apply_tc_map(entities_mut(host), &tc_by_handle);
+            let updated = data::with_document_mut(host, |doc| data::apply_tc_map(doc.entities_mut(), &tc_by_handle));
             if updated > 0 || !tc_by_handle.is_empty() {
                 host.set_dirty();
                 host.bump_geometry();

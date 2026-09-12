@@ -13,8 +13,17 @@ if (-not (Test-Path $Ocs)) { throw "OCS not found: $Ocs" }
 $env:HYDROCOMPLETE_PRO = "1"
 
 function Invoke-Ocs($cmds) {
+    # OCS v2026.x writes "Loaded plugin: ..." to stderr; under "Stop" PowerShell
+    # 5.1 turns that NativeCommandError into a terminating error before any reply.
     $lines = [System.Collections.Generic.List[string]]::new()
-    @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    } finally {
+        $ErrorActionPreference = $prev
+        $Error.Clear()
+    }
     return $lines.ToArray()
 }
 

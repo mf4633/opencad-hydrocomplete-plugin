@@ -75,7 +75,9 @@ $html = Get-Content $newReport.FullName -Raw
 if ($html -notlike '*a=81.2*') { throw "Report should use Charlotte NC IDF (a=81.2)" }
 if ($html -notlike '*Network/P1*</td><td>1.25*') { throw "P1 diameter should be 1.25 ft" }
 if ($html -notlike '*Network/P2*</td><td>1.50*') { throw "P2 diameter should be 1.50 ft" }
-if ($html -like '*Network/P1*</td><td>1.50</td><td>0.0010*') { throw "P1 still flat/default diameter" }
+# No wildcard between the label and its cells: "*Network/P1*</td><td>1.50..." also
+# matched P2's row (1.50 ft, flat 0.0010), failing even when P1 was correctly 1.25.
+if ($html -like '*Network/P1</td><td>1.50</td><td>0.0010*') { throw "P1 still flat/default diameter" }
 
 Write-Host ""
 Write-Host "=== Manual pipe demo ready ==="
