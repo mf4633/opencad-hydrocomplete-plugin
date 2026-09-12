@@ -4,6 +4,14 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.3] - 2026-09-12
+
+### Fixed
+
+- Open CAD Studio now shows the real plugin version. v0.5.2 carried the edit
+  fix but its compiled manifest still said "0.5.1" (hardcoded); the manifest now
+  reads Cargo.toml and a test keeps it equal to plugin.toml.
+
 ## [0.5.2] - 2026-09-12
 
 ### Fixed

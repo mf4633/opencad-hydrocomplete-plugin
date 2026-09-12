@@ -43,7 +43,8 @@ pub mod manifest {
     pub static MANIFEST: PluginManifest = PluginManifest {
         id: PLUGIN_ID,
         name: "HydroComplete",
-        version: "0.5.1",
+        // From Cargo.toml: a hardcoded string shipped v0.5.2 labelled "0.5.1".
+        version: env!("CARGO_PKG_VERSION"),
         description: "Stormwater hydrology and hydraulics — mirrors HydroComplete.Civil3D",
         api_version: ApiVersion::CURRENT,
         ribbon_order: 45,
@@ -180,3 +181,17 @@ impl BuiltinPlugin for HydroCompletePlugin {
 }
 
 ocs_plugin_api::export_plugin!(HydroCompletePlugin);
+
+#[cfg(test)]
+mod manifest_version_tests {
+    #[test]
+    fn manifest_version_matches_plugin_toml() {
+        let toml = include_str!("../plugin.toml");
+        let line = toml
+            .lines()
+            .find(|l| l.trim_start().starts_with("version"))
+            .expect("version line in plugin.toml");
+        let v = line.split('"').nth(1).expect("quoted version");
+        assert_eq!(crate::manifest::MANIFEST.version, v);
+    }
+}
