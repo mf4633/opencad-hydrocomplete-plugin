@@ -4,6 +4,18 @@ All notable changes to **opencad-hydrocomplete-plugin** are documented here.
 
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.5.2] - 2026-09-12
+
+### Fixed
+
+- **Edits now actually land in the drawing.** Open CAD Studio runs plugins out
+  of process, where edits made through the document snapshot were silently
+  discarded: HC_EDIT, HC_SIZE, HC_APPLYTC, analysis styling, the HC_PIPE
+  downstream-invert step, HC_CIVIL_IMPORT tagging and DWG XDATA persistence all
+  reported success and changed nothing. Changes are now committed to the host
+  through `update_entity`. Verified on OCS v2026.36: an `HC_EDIT` invert change
+  now shows in the report (adverse slope -0.0200).
+
 ## [0.5.1] - 2026-09-08
 
 ### Added
