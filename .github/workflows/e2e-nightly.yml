@@ -86,8 +86,38 @@ jobs:
           if (-not (Test-Path $dest)) { throw "OCS download failed: $dest" }
           Write-Host "OCS portable: $dest ($((Get-Item $dest).Length) bytes)"
 
+      # The OCS steps hung on hosted runners with no output (2026-09-12, run
+      # 34721475211: 26 min inside the first --serve call). Probe the host alone
+      # with a hard cap so a hang is diagnosed in seconds, not at job timeout.
+      - name: Probe OCS --serve (no plugins, 90 s cap)
+        shell: pwsh
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          $exe = Join-Path $env:RUNNER_TEMP $env:OCS_EXE_NAME
+          Get-Item $exe | Format-List Name, Length
+          $psi = New-Object System.Diagnostics.ProcessStartInfo $exe, '--serve'
+          $psi.RedirectStandardInput = $true
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.UseShellExecute = $false
+          $psi.Environment['OCS_PLUGINS_DIR'] = (Join-Path $env:RUNNER_TEMP 'no-plugins')
+          $psi.Environment['OCS_PLUGIN_VERBOSE'] = '1'
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $out = $p.StandardOutput.ReadToEndAsync()
+          $err = $p.StandardError.ReadToEndAsync()
+          $p.StandardInput.WriteLine('{"op":"new"}')
+          $p.StandardInput.WriteLine('{"op":"entities"}')
+          $p.StandardInput.Close()
+          if (-not $p.WaitForExit(90000)) { Write-Host '::warning::OCS --serve HUNG (90 s) with no plugins'; $p.Kill() }
+          $p.WaitForExit()
+          Write-Host "exit code: $($p.ExitCode)"
+          Write-Host "--- stdout"; Write-Host $out.Result
+          Write-Host "--- stderr"; Write-Host $err.Result
+
       - name: Run nightly E2E (OCS + frontend)
         shell: pwsh
+        timeout-minutes: 25
         env:
           HC_OCS_EXE: ${{ runner.temp }}/${{ env.OCS_EXE_NAME }}
           E2E_MODE: ${{ github.event.inputs.e2e_mode || 'OcsFrontend' }}
