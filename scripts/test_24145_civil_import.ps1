@@ -5,6 +5,7 @@ $Ocs = if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE } else { Join-Path $env:USERPROFIL
 # PowerShell 5.1 prefixes a UTF-8 BOM when piping to a native exe, so OCS --serve
 # rejected the first request ({"op":"new"}) as invalid JSON. Pipe without a BOM.
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
+. (Join-Path $PSScriptRoot 'OcsServe.ps1')  # Invoke-OcsBatch: Process.Start + timeout (see the file)
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $PluginDir = Join-Path $env:APPDATA "OpenCADStudio\plugins\opencad.hydrocomplete"
 $Dwg = "C:/Users/michael.flynn/Downloads/24-145 X-DRAINAGE.dwg"
@@ -20,7 +21,7 @@ Start-Sleep -Seconds 2
 
 function Invoke-Ocs([string[]]$cmds) {
     $lines = [System.Collections.Generic.List[string]]::new()
-    @($cmds) | & $Ocs --serve 2>&1 | ForEach-Object { $lines.Add([string]$_) }
+    Invoke-OcsBatch $Ocs @($cmds) | ForEach-Object { $lines.Add([string]$_) }
     return $lines.ToArray()
 }
 

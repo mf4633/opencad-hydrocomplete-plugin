@@ -5,6 +5,7 @@ $Ocs = if ($env:HC_OCS_EXE) { $env:HC_OCS_EXE } else { Join-Path $env:USERPROFIL
 # PowerShell 5.1 prefixes a UTF-8 BOM when piping to a native exe, so OCS --serve
 # rejected the first request ({"op":"new"}) as invalid JSON. Pipe without a BOM.
 [Console]::InputEncoding = New-Object System.Text.UTF8Encoding $false
+. (Join-Path $PSScriptRoot 'OcsServe.ps1')  # Invoke-OcsBatch: Process.Start + timeout (see the file)
 $OutputEncoding = New-Object System.Text.UTF8Encoding $false
 $ReportDir = Join-Path $env:USERPROFILE "Documents\HydroComplete"
 $env:HYDROCOMPLETE_PRO = "1"
@@ -30,7 +31,7 @@ function Test-OpenedDwg($label, $dwgPath, $must) {
         '{"op":"run","cmd":"HC_REPORT_PDF"}'
     )
     $output = [System.Collections.Generic.List[string]]::new()
-    @($requests) | & $Ocs --serve 2>&1 | ForEach-Object { $output.Add([string]$_) }
+    Invoke-OcsBatch $Ocs @($requests) | ForEach-Object { $output.Add([string]$_) }
     $output = $output.ToArray()
     foreach ($line in @($output)) {
         if ($line -match '"ok":false') { throw "${label} failed: $line" }
