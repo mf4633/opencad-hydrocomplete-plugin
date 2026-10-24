@@ -39,6 +39,10 @@ function Invoke-OcsBatch {
         throw "OpenCADStudio --serve did not exit within $TimeoutSec s"
     }
     $p.WaitForExit()
+    # OCS can leave its plugin runner (a child of the same exe) running after
+    # it exits; on hosted runners it held the step open. Stop any orphan.
+    Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" -ErrorAction SilentlyContinue |
+        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
     [void]$out.Wait(10000)
     [void]$err.Wait(10000)
     $lines = New-Object System.Collections.Generic.List[string]

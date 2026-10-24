@@ -85,9 +85,23 @@ function Invoke-E2EScript {
     $outLog = "$logBase.out.log"
     $errLog = "$logBase.err.log"
     $psArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ScriptPath) + $ScriptArgs
-    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -Wait -PassThru -NoNewWindow `
+    # No -Wait: it waits for every descendant too, and once the plugin loads
+    # OCS leaves its out-of-process plugin runner behind on hosted runners, so
+    # -Wait never returned (nightly runs 40103256297, 40115749249: 25 min).
+    # Wait for the script itself, with a cap, then clear leftover OCS processes.
+    $proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $psArgs -PassThru -NoNewWindow `
         -RedirectStandardOutput $outLog -RedirectStandardError $errLog
-    $code = $proc.ExitCode
+    $capMin = 10
+    if ($proc.WaitForExit($capMin * 60 * 1000)) {
+        $proc.WaitForExit()
+        $code = $proc.ExitCode
+    }
+    else {
+        & taskkill.exe /PID $proc.Id /T /F 2>&1 | Out-Null
+        Write-Host "TIMEOUT: $Name did not finish in $capMin min"
+        $code = 124
+    }
+    Get-Process -Name 'OpenCADStudio*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     $prevEap = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
     foreach ($path in @($outLog, $errLog)) {
