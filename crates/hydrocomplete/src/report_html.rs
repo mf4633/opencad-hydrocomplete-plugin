@@ -86,11 +86,11 @@ fn format_units_latex(units: &str) -> String {
 
 fn try_map_formula_to_latex(formula: &str) -> Option<&'static str> {
     match formula.trim() {
-        "(1.486/n)*A*R^(2/3)*S^(1/2)" => Some(r"Q = \frac{1.486}{n} A R^{2/3} S^{1/2}"),
+        "(1.486/n)*A*R_h^(2/3)*S^(1/2)" => Some(r"Q = \frac{1.486}{n} A R_h^{2/3} S^{1/2}"),
         "pi*D^2/4" => Some(r"A = \frac{\pi D^2}{4}"),
-        "D/4" => Some(r"R = \frac{D}{4}"),
+        "A/P = D/4" => Some(r"R_h = \frac{A}{P} = \frac{\pi D^2/4}{\pi D} = \frac{D}{4}"),
         "Q_full/A_full" => Some(r"V = \frac{Q_{\text{full}}}{A_{\text{full}}}"),
-        "[n*Q/(1.486*A*R^(2/3))]^2" => Some(r"S_f = \left[\frac{n Q}{1.486\, A\, R^{2/3}}\right]^2"),
+        "[n*Q/(1.486*A*R_h^(2/3))]^2" => Some(r"S_f = \left[\frac{n Q}{1.486\, A\, R_h^{2/3}}\right]^2"),
         "S_f*L" => Some(r"h_f = S_f L"),
         "K*Vh" => Some(r"h_m = K \cdot V_h"),
         "Q = C*i*A" => Some(r"Q = C \cdot i \cdot A"),
@@ -127,6 +127,15 @@ fn format_result_latex(step: &CalcStep) -> String {
     )
 }
 
+/// Heading shown above a step; spells out symbols that are easy to misread.
+fn step_title(label: &str) -> String {
+    match label {
+        // Hydraulic radius (area / wetted perimeter), not the geometric radius D/2.
+        "R_h" => "R_h (hydraulic radius = A/P, not the pipe radius)".to_string(),
+        _ => label.to_string(),
+    }
+}
+
 fn render_calc_step_html(step: &CalcStep) -> String {
     let latex = try_map_formula_to_latex(&step.formula);
     let result_latex = format_result_latex(step);
@@ -137,7 +146,7 @@ fn render_calc_step_html(step: &CalcStep) -> String {
     ));
     block.push_str(&format!(
         r#"<div class="hc-formula-title">{}</div>"#,
-        esc(&step.label)
+        esc(&step_title(&step.label))
     ));
     if let Some(eq) = latex {
         block.push_str(&format!(
@@ -266,24 +275,21 @@ fn manning_steps(pipe: &Pipe, pr: &stormsewer::network::PipeResult) -> Vec<CalcS
     let v_full = pr.velocity_full;
     vec![
         CalcStep::new("A", "pi*D^2/4", area, "ft^2"),
-        CalcStep::new("R", "D/4", radius, "ft"),
-        CalcStep::new("Q_full", "(1.486/n)*A*R^(2/3)*S^(1/2)", q_full, "cfs"),
+        CalcStep::new("R_h", "A/P = D/4", radius, "ft"),
+        CalcStep::new("Q_full", "(1.486/n)*A*R_h^(2/3)*S^(1/2)", q_full, "cfs"),
         CalcStep::new("V_full", "Q_full/A_full", v_full, "ft/s"),
         CalcStep::new("n", "Manning roughness", n, ""),
         CalcStep::new("S", "Pipe slope", s, "ft/ft"),
     ]
 }
 
-fn hgl_steps(
-    pipe: &Pipe,
-    pr: &stormsewer::network::PipeResult,
-    junction_k: f64,
-) -> Vec<CalcStep> {
+/// Friction slope and friction loss S_f*L, from the same geometry the engine
+/// uses (full barrel when surcharged, normal depth otherwise). Zero flow means
+/// zero friction; any HGL rise on a dry reach comes from the invert, not h_f.
+fn friction_loss(pipe: &Pipe, pr: &stormsewer::network::PipeResult) -> (f64, f64) {
     let d = pipe.diameter;
     let q = pr.design_q;
     let n = pipe.n;
-    let length = pipe.length;
-    let hm = junction_k * pr.velocity.powi(2) / (2.0 * G_US);
     let (area, _, radius, _) = if pr.surcharged {
         (full_area(d), 0.0, d / 4.0, 0.0)
     } else {
@@ -295,19 +301,25 @@ fn hgl_steps(
     } else {
         0.0
     };
-    let sf = if conv > 0.0 {
+    let sf = if conv > 0.0 && q > 0.0 {
         (q / conv).powi(2)
     } else {
         0.0
     };
-    let hf = if let (Some(up), Some(dn)) = (pr.hgl_up, pr.hgl_dn) {
-        (up - dn - hm).max(0.0)
-    } else {
-        sf * length
-    };
+    (sf, sf * pipe.length)
+}
+
+fn hgl_steps(
+    pipe: &Pipe,
+    pr: &stormsewer::network::PipeResult,
+    junction_k: f64,
+) -> Vec<CalcStep> {
+    let q = pr.design_q;
+    let hm = junction_k * pr.velocity.powi(2) / (2.0 * G_US);
+    let (sf, hf) = friction_loss(pipe, pr);
     vec![
         CalcStep::new("Q", "Design flow", q, "cfs"),
-        CalcStep::new("S_f", "[n*Q/(1.486*A*R^(2/3))]^2", sf, "ft/ft"),
+        CalcStep::new("S_f", "[n*Q/(1.486*A*R_h^(2/3))]^2", sf, "ft/ft"),
         CalcStep::new("h_f", "S_f*L", hf, "ft"),
         CalcStep::new("h_m", "K*Vh", hm, "ft"),
         CalcStep::new("K", "Junction loss coefficient", junction_k, ""),
@@ -453,9 +465,9 @@ fn append_hgl_section(out: &mut String, net: &Network, a: &Analysis, params: &St
     let loss_note = " with HEC-22 junction/exit losses";
     out.push_str("<h2>Steady HGL Profile</h2>\n");
     out.push_str(&format!(
-        "<p>Method: steady uniform-flow stepping downstream from headwater HGL \
-         using Manning normal depth per reach (partial-flow A and R){loss_note}. \
-         (S<sub>f</sub> = [n&middot;Q/(1.486&middot;A&middot;R<sup>2/3</sup>)]<sup>2</sup>, \
+        "<p>Method: steady uniform-flow stepping upstream from the outfall HGL \
+         using Manning normal depth per reach (partial-flow A and hydraulic radius R<sub>h</sub> = A/P){loss_note}. \
+         (S<sub>f</sub> = [n&middot;Q/(1.486&middot;A&middot;R<sub>h</sub><sup>2/3</sup>)]<sup>2</sup>, \
          h<sub>f</sub> = S<sub>f</sub>&middot;L, h<sub>m</sub> = K&middot;Vh). \
          design Q = <strong>{} cfs</strong>.</p>\n",
         f(design_q, 2)
@@ -468,15 +480,18 @@ fn append_hgl_section(out: &mut String, net: &Network, a: &Analysis, params: &St
     out.push_str("<th>Pipe</th><th>d/D</th><th>h<sub>f</sub> (ft)</th><th>h<sub>m</sub> (ft)</th>");
     out.push_str("<th>HGL<sub>US</sub> (ft)</th><th>HGL<sub>DS</sub> (ft)</th><th>SURCH</th>\n");
     out.push_str("</tr></thead><tbody>\n");
+    let mut held_at_invert = false;
     for pr in &a.pipes {
         let Some(pipe) = pipes.get(pr.id.as_str()) else {
             continue;
         };
         let hm = params.hydraulics.junction_k * pr.velocity.powi(2) / (2.0 * G_US);
-        let hf = match (pr.hgl_up, pr.hgl_dn) {
-            (Some(up), Some(dn)) => (up - dn - hm).max(0.0),
-            _ => 0.0,
-        };
+        let (_, hf) = friction_loss(pipe, pr);
+        if let (Some(up), Some(dn)) = (pr.hgl_up, pr.hgl_dn) {
+            if up - dn > hf + hm + 0.005 {
+                held_at_invert = true;
+            }
+        }
         let row_class = if pr.capacity_unavailable() {
             r#" class="capacity-na""#
         } else if pr.report_surcharged() {
@@ -507,6 +522,13 @@ fn append_hgl_section(out: &mut String, net: &Network, a: &Analysis, params: &St
         ));
     }
     out.push_str("</tbody></table>\n");
+    if held_at_invert {
+        out.push_str(
+            "<p><em>Note: where HGL<sub>US</sub> &minus; HGL<sub>DS</sub> exceeds h<sub>f</sub> + h<sub>m</sub>, \
+             the upstream HGL is set by the upstream invert plus normal depth (for example a reach with \
+             little or no flow), not by friction.</em></p>\n",
+        );
+    }
     out.push_str("<h4>HGL calculation steps</h4>\n");
     for pr in &a.pipes {
         let Some(pipe) = pipes.get(pr.id.as_str()) else {

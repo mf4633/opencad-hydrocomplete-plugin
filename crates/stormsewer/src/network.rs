@@ -448,7 +448,15 @@ impl Network {
                     let yn = p_yn[pi].unwrap_or(0.0);
                     let (a, _pp, r, _t) = circular_geometry(yn, dia);
                     let conv = conveyance(p.n, a, r, k);
-                    let sf = if conv > 0.0 { (q / conv).powi(2) } else { p_slope[pi].max(0.0) };
+                    // No flow, no friction: a dry reach's HGL is held at its
+                    // invert below, not raised by a slope-based loss.
+                    let sf = if q <= 0.0 {
+                        0.0
+                    } else if conv > 0.0 {
+                        (q / conv).powi(2)
+                    } else {
+                        p_slope[pi].max(0.0)
+                    };
                     (hgl[d].max(inv_d + yn), sf * p.length)
                 };
 
