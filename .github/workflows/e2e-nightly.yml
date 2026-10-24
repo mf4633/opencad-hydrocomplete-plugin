@@ -112,6 +112,46 @@ jobs:
           Write-Host "--- stdout"; Write-Host $out.Result
           Write-Host "--- stderr"; Write-Host $err.Result
 
+      # Same probe with the plugin loaded (verbose IPC trace, 120 s cap). The
+      # suite hung 22 min inside its first --serve call once the plugin
+      # started loading (run 40103256297); this shows where it stops.
+      - name: Probe OCS --serve with the plugin (120 s cap)
+        shell: pwsh
+        timeout-minutes: 8
+        continue-on-error: true
+        run: |
+          cargo build --release -p opencad-hydrocomplete-plugin
+          $dir = Join-Path $env:RUNNER_TEMP 'probe-plugins\opencad.hydrocomplete'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          Copy-Item target\release\opencad_hydrocomplete_plugin.dll (Join-Path $dir 'opencad.hydrocomplete-windows-x86_64.dll')
+          $acad = ((Select-String -Path Cargo.lock -Pattern '^source = "git\+https://github.com/HakanSeven12/opencadcodec.git' | Select-Object -First 1).Line -replace '^source = "', '' -replace '"$', '')
+          $toml = (Get-Content -Raw plugin.toml).Replace('__RUSTC_VERSION__', (rustc --version).Trim()).Replace('__ACADRUST_SOURCE__', $acad)
+          [IO.File]::WriteAllText((Join-Path $dir 'plugin.toml'), $toml, (New-Object Text.UTF8Encoding $false))
+          $exe = Join-Path $env:RUNNER_TEMP $env:OCS_EXE_NAME
+          $psi = New-Object System.Diagnostics.ProcessStartInfo $exe, '--serve'
+          $psi.RedirectStandardInput = $true
+          $psi.RedirectStandardOutput = $true
+          $psi.RedirectStandardError = $true
+          $psi.UseShellExecute = $false
+          $psi.Environment['OCS_PLUGINS_DIR'] = (Join-Path $env:RUNNER_TEMP 'probe-plugins')
+          $psi.Environment['OCS_PLUGIN_VERBOSE'] = '1'
+          $sw = [Diagnostics.Stopwatch]::StartNew()
+          $p = [System.Diagnostics.Process]::Start($psi)
+          $out = $p.StandardOutput.ReadToEndAsync()
+          $err = $p.StandardError.ReadToEndAsync()
+          $p.StandardInput.WriteLine('{"op":"new"}')
+          $p.StandardInput.WriteLine('{"op":"run","cmd":"HC_ABOUT"}')
+          $p.StandardInput.WriteLine('{"op":"entities"}')
+          $p.StandardInput.Close()
+          if (-not $p.WaitForExit(120000)) {
+            Write-Host '::warning::OCS --serve HUNG (120 s) with the plugin loaded'
+            Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'OpenCADStudio*' } | Format-Table ProcessId, ParentProcessId, CommandLine -AutoSize | Out-String -Width 400 | Write-Host
+            Get-Process | Where-Object { $_.Name -like 'OpenCADStudio*' } | Stop-Process -Force
+          }
+          Write-Host ("elapsed {0:n1}s, exit code: {1}" -f $sw.Elapsed.TotalSeconds, $(if ($p.HasExited) { $p.ExitCode } else { 'killed' }))
+          if ($out.Wait(5000)) { Write-Host "--- stdout"; Write-Host $out.Result }
+          if ($err.Wait(5000)) { Write-Host "--- stderr"; Write-Host $err.Result }
+
       - name: Run nightly E2E (OCS + frontend)
         shell: pwsh
         timeout-minutes: 25
