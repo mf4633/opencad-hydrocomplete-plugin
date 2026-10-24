@@ -25,7 +25,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # rustc and the OCS tag both come from ocs-host.lock (see the action).
+      - name: Install the host's rustc
+        uses: ./.github/actions/host-toolchain
       - run: cargo build --release
       - name: Stage release asset
         shell: bash

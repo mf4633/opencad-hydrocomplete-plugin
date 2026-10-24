@@ -98,3 +98,9 @@ jobs:
           else
             gh issue create --title "$title" --body "$body" --label host-drift || gh issue create --title "$title" --body "$body"
           fi
+
+      - name: Fail while the plugin is behind the host
+        if: steps.cmp.outputs.drift != ''
+        run: |
+          echo "::error::Plugin is built for an older Open CAD Studio:${{ steps.cmp.outputs.drift }}. Repin (see the drift issue)."
+          exit 1

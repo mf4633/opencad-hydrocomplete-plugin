@@ -31,14 +31,10 @@ on:
           - OcsFrontend
           - Full
         default: OcsFrontend
-      ocs_version:
-        description: 'Open CAD Studio release tag'
-        type: string
-        default: v2026.36
 
-env:
-  OCS_VERSION: ${{ github.event.inputs.ocs_version || 'v2026.36' }}
-  OCS_EXE_NAME: OpenCADStudio-${{ github.event.inputs.ocs_version || 'v2026.36' }}-windows-x86_64-portable.exe
+# The OCS release under test and the rustc the plugin is built with are read
+# from ocs-host.lock by .github/actions/host-toolchain, which exports
+# OCS_VERSION and OCS_EXE_NAME. Repinning the lock moves this job with it.
 
 jobs:
   ocs-e2e-frontend:
@@ -58,8 +54,9 @@ jobs:
           path: _dag
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      # rustc and the OCS tag both come from ocs-host.lock (see the action).
+      - name: Install the host's rustc
+        uses: ./.github/actions/host-toolchain
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

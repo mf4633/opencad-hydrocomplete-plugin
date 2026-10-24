@@ -1,0 +1,28 @@
+# Installs the exact rustc the pinned Open CAD Studio host was built with.
+#
+# The host loads a plugin only when the plugin's rustc --version line matches
+# its own token for token (ocs_plugin_api::version_info::rustc_versions_compatible),
+# so building on "stable" breaks the plugin the day a new Rust ships. The pin
+# lives in ocs-host.lock; this action is the only place CI reads it.
+name: Host toolchain
+description: Install the rustc from ocs-host.lock and export OCS_VERSION / OCS_EXE_NAME
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        . ./ocs-host.lock
+        want="$RUSTC_VERSION"
+        ver=$(echo "$want" | sed -n 's/^rustc \([0-9][0-9.]*\) .*/\1/p')
+        [ -n "$ver" ] || { echo "::error::cannot read a version from RUSTC_VERSION='$want' in ocs-host.lock"; exit 1; }
+        rustup toolchain install "$ver" --profile minimal --no-self-update
+        rustup default "$ver"
+        got=$(rustc --version)
+        if [ "$got" != "$want" ]; then
+          echo "::error::rustc is '$got' but the host was built with '$want'"
+          exit 1
+        fi
+        echo "rustc matches the host: $got"
+        echo "OCS_VERSION=$OCS_TAG" >> "$GITHUB_ENV"
+        echo "OCS_EXE_NAME=OpenCADStudio-$OCS_TAG-windows-x86_64-portable.exe" >> "$GITHUB_ENV"
