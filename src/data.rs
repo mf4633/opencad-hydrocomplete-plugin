@@ -1122,8 +1122,9 @@ mod out_of_process_commit_tests {
             &mut self,
             _plugin_id: &'static str,
             _init: &mut dyn FnMut() -> Box<dyn Any + Send + Sync>,
-        ) -> &mut (dyn Any + Send + Sync) {
-            unimplemented!()
+        ) -> Option<&mut (dyn Any + Send + Sync)> {
+            // Like the out-of-process host: no host-side plugin state.
+            None
         }
         fn document_reader(&self) -> Box<dyn DocumentReader + '_> {
             unimplemented!()

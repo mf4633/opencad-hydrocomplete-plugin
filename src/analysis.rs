@@ -158,7 +158,7 @@ fn seg(x1: f64, y1: f64, x2: f64, y2: f64) -> EntityType {
 }
 
 fn label(x: f64, y: f64, text: String, height: f64) -> EntityType {
-    EntityType::MText(MText { value: text, insertion_point: v3(x, y), height, ..Default::default() })
+    EntityType::MText(Box::new(MText { value: text, insertion_point: v3(x, y), height, ..Default::default() }))
 }
 
 fn circle(x: f64, y: f64, r: f64) -> EntityType {

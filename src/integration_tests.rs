@@ -197,10 +197,10 @@ mod tests {
 
         let blob = drawing_params::ParamsBlob::from_params(&params, Some("charlotte-nc"));
         let json = serde_json::to_string(&blob).unwrap();
-        let mut marker = EntityType::MText(MText {
+        let mut marker = EntityType::MText(Box::new(MText {
             value: "HC".into(),
             ..Default::default()
-        });
+        }));
         let mut rec = ExtendedDataRecord::new(APP_PARAMS);
         rec.add_value(XDataValue::String(json));
         marker.common_mut().extended_data.add_record(rec);

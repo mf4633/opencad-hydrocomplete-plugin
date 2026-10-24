@@ -22,6 +22,11 @@ Copy-Item -Force (Join-Path $Root "target\debug\opencad_hydrocomplete_plugin.dll
 # committed plugin.toml carries the __RUSTC_VERSION__ placeholder (release.yml
 # fills it the same way). Copying it raw made OCS answer "Unknown command".
 $rustc = (& rustc --version).Trim()
-$toml = (Get-Content -Raw (Join-Path $Root "plugin.toml")).Replace('__RUSTC_VERSION__', $rustc)
+# From OCS v2026.42 the host also refuses a plugin.toml without the
+# opencadcodec source it was built against; take it from Cargo.lock.
+$acadLine = Select-String -Path (Join-Path $Root "Cargo.lock") -Pattern '^source = "git\+https://github.com/HakanSeven12/opencadcodec.git' | Select-Object -First 1
+if (-not $acadLine) { throw "No opencadcodec source in Cargo.lock; build the plugin first." }
+$acad = $acadLine.Line -replace '^source = "', '' -replace '"$', ''
+$toml = (Get-Content -Raw (Join-Path $Root "plugin.toml")).Replace('__RUSTC_VERSION__', $rustc).Replace('__ACADRUST_SOURCE__', $acad)
 [System.IO.File]::WriteAllText((Join-Path $PluginDir "plugin.toml"), $toml, (New-Object System.Text.UTF8Encoding $false))
 Write-Host "Installed debug plugin DLL + plugin.toml ($rustc)"

@@ -57,5 +57,5 @@ fn label_at(x: f64, y: f64, text: &str) -> EntityType {
     mt.value = text.to_string();
     mt.height = 2.5;
     mt.common.layer = LAYER.to_string();
-    EntityType::MText(mt)
+    EntityType::MText(Box::new(mt))
 }

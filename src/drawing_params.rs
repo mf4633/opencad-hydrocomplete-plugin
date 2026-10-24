@@ -163,12 +163,12 @@ pub fn write_params_to_drawing(
     }
 
     host.push_undo("HC_PARAMS");
-    let mut ent = EntityType::MText(MText {
+    let mut ent = EntityType::MText(Box::new(MText {
         value: "HydroComplete parameters".into(),
         insertion_point: Vector3::new(-1.0e9, -1.0e9, 0.0),
         height: 0.01,
         ..Default::default()
-    });
+    }));
     ent.common_mut().layer = META_LAYER.to_string();
     ent.common_mut()
         .extended_data
