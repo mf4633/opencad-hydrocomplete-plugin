@@ -1,5 +1,7 @@
 # opencad-hydrocomplete-plugin
 
+> **Unsupported (retired 2026-11-17).** This plugin was built for Open CAD Studio v2026.42 (plugin API 10). Open CAD Studio has since moved to plugin API 23 and replaced the drawing library the plugin depends on, so it does not load in current releases and will not be updated. The source stays available under GPL-3.0. For the same storm-drain design workflow, use [HydroComplete](https://hydrocomplete.com).
+
 **HydroComplete** hydrology/hydraulics add-on for [Open CAD Studio](https://github.com/HakanSeven12/OpenCADStudio), mirroring the [`HydroComplete.Civil3D`](https://github.com/mf4633/hydrocomplete-civil3d) command set and engine for gravity storm-drain design.
 
 Distributed as a prebuilt dynamic library via GitHub Releases (same pattern as [opencad-storm-sewer-plugin](https://github.com/mf4633/opencad-storm-sewer-plugin)).
